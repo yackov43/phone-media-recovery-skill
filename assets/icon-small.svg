@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" role="img" aria-label="Phone media recovery icon">
+  <rect width="400" height="400" rx="64" fill="#0f766e"/>
+  <rect x="94" y="44" width="212" height="312" rx="30" fill="#f8fafc"/>
+  <rect x="116" y="76" width="168" height="230" rx="12" fill="#ccfbf1"/>
+  <path d="M148 210h104M200 158v104" stroke="#0f766e" stroke-width="22" stroke-linecap="round"/>
+  <path d="M146 330h108" stroke="#134e4a" stroke-width="16" stroke-linecap="round"/>
+  <path d="M282 118c38 8 62 32 68 68" fill="none" stroke="#facc15" stroke-width="18" stroke-linecap="round"/>
+  <path d="M344 184l-3 47-40-24" fill="none" stroke="#facc15" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

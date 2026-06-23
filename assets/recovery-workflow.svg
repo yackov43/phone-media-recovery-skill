@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-label="Phone media recovery workflow">
+  <rect width="1200" height="720" fill="#f8fafc"/>
+  <text x="60" y="70" font-family="Segoe UI, Arial" font-size="36" font-weight="700" fill="#0f172a">Verified phone media recovery workflow</text>
+  <text x="60" y="112" font-family="Segoe UI, Arial" font-size="18" fill="#475569">Exact paths, safe transfer, checksum proof, and clear non-recoverable cases.</text>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2 2l8 4-8 4z" fill="#0f766e"/>
+    </marker>
+  </defs>
+  <g font-family="Segoe UI, Arial">
+    <rect x="70" y="190" width="210" height="340" rx="24" fill="#ffffff" stroke="#0f766e" stroke-width="4"/>
+    <rect x="98" y="232" width="154" height="224" rx="12" fill="#ccfbf1"/>
+    <text x="175" y="494" font-size="24" font-weight="700" text-anchor="middle" fill="#0f172a">Source phone</text>
+    <text x="175" y="522" font-size="16" text-anchor="middle" fill="#475569">Build manifests</text>
+
+    <rect x="370" y="180" width="460" height="360" rx="28" fill="#ffffff" stroke="#334155" stroke-width="3"/>
+    <text x="600" y="230" font-size="26" font-weight="700" text-anchor="middle" fill="#0f172a">Recovery workstation</text>
+    <rect x="420" y="270" width="360" height="52" rx="10" fill="#ecfeff" stroke="#0891b2"/>
+    <text x="600" y="304" font-size="18" text-anchor="middle" fill="#164e63">Compare exact relative paths</text>
+    <rect x="420" y="346" width="360" height="52" rx="10" fill="#fff7ed" stroke="#f97316"/>
+    <text x="600" y="380" font-size="18" text-anchor="middle" fill="#7c2d12">Detect missing and partial files</text>
+    <rect x="420" y="422" width="360" height="52" rx="10" fill="#f0fdf4" stroke="#16a34a"/>
+    <text x="600" y="456" font-size="18" text-anchor="middle" fill="#14532d">Transfer with archive-safe filenames</text>
+
+    <rect x="920" y="190" width="210" height="340" rx="24" fill="#ffffff" stroke="#0f766e" stroke-width="4"/>
+    <rect x="948" y="232" width="154" height="224" rx="12" fill="#dcfce7"/>
+    <text x="1025" y="494" font-size="24" font-weight="700" text-anchor="middle" fill="#0f172a">Destination phone</text>
+    <text x="1025" y="522" font-size="16" text-anchor="middle" fill="#475569">Verify restored files</text>
+
+    <line x1="285" y1="360" x2="360" y2="360" stroke="#0f766e" stroke-width="6" marker-end="url(#arrow)"/>
+    <line x1="840" y1="360" x2="910" y2="360" stroke="#0f766e" stroke-width="6" marker-end="url(#arrow)"/>
+  </g>
+  <rect x="150" y="610" width="900" height="52" rx="14" fill="#0f172a"/>
+  <text x="600" y="644" font-family="Segoe UI, Arial" font-size="18" text-anchor="middle" fill="#f8fafc">Never guess: restore only exact matches or verified partial-file replacements.</text>
+</svg>

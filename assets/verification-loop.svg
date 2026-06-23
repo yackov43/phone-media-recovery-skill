@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-label="Phone media recovery verification loop">
+  <rect width="1200" height="720" fill="#f8fafc"/>
+  <text x="70" y="72" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#0f172a">Verification loop</text>
+  <text x="70" y="112" font-family="Segoe UI, Arial" font-size="18" fill="#475569">Copy success is not enough. Verify from both devices after the transfer.</text>
+  <defs>
+    <marker id="arrow2" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2 2l8 4-8 4z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <g font-family="Segoe UI, Arial">
+    <circle cx="220" cy="350" r="92" fill="#dbeafe" stroke="#2563eb" stroke-width="4"/>
+    <text x="220" y="340" text-anchor="middle" font-size="22" font-weight="700" fill="#1e3a8a">Manifest</text>
+    <text x="220" y="370" text-anchor="middle" font-size="16" fill="#1e3a8a">epoch | size | path</text>
+
+    <circle cx="500" cy="350" r="92" fill="#ccfbf1" stroke="#0f766e" stroke-width="4"/>
+    <text x="500" y="340" text-anchor="middle" font-size="22" font-weight="700" fill="#134e4a">Restore</text>
+    <text x="500" y="370" text-anchor="middle" font-size="16" fill="#134e4a">archive-safe transfer</text>
+
+    <circle cx="780" cy="350" r="92" fill="#dcfce7" stroke="#16a34a" stroke-width="4"/>
+    <text x="780" y="340" text-anchor="middle" font-size="22" font-weight="700" fill="#14532d">Verify</text>
+    <text x="780" y="370" text-anchor="middle" font-size="16" fill="#14532d">checksum + bytes</text>
+
+    <circle cx="1020" cy="350" r="92" fill="#fef3c7" stroke="#d97706" stroke-width="4"/>
+    <text x="1020" y="340" text-anchor="middle" font-size="22" font-weight="700" fill="#78350f">Report</text>
+    <text x="1020" y="370" text-anchor="middle" font-size="16" fill="#78350f">restored / blocked</text>
+
+    <line x1="312" y1="350" x2="398" y2="350" stroke="#2563eb" stroke-width="6" marker-end="url(#arrow2)"/>
+    <line x1="592" y1="350" x2="678" y2="350" stroke="#2563eb" stroke-width="6" marker-end="url(#arrow2)"/>
+    <line x1="872" y1="350" x2="918" y2="350" stroke="#2563eb" stroke-width="6" marker-end="url(#arrow2)"/>
+    <path d="M1018 465C908 610 360 610 225 465" fill="none" stroke="#2563eb" stroke-width="5" marker-end="url(#arrow2)"/>
+    <text x="610" y="620" text-anchor="middle" font-size="18" fill="#1d4ed8">If users still see missing media, rescan targeted folders and classify again.</text>
+  </g>
+</svg>
