@@ -1,41 +1,39 @@
-# 🎬 Explainer Video Kit · ערכת סרטון הסברה
+# Explainer Video Kit
 
-Everything needed to produce the ~60-second explainer with **English voice-over**, background music, and **burned-in Hebrew subtitles**.
+This folder contains the current 60-second explainer video and the source project used to render it.
 
-## Contents
+## Current Output
 
-| File | Use |
-|------|-----|
-| [`narration-en.md`](narration-en.md) | English narration script → feed to the TTS / voice track (7 lines, in order). |
-| [`subtitles-he.srt`](subtitles-he.srt) | Hebrew subtitles, pre-timed → load as the caption track. |
-| [`storyboard.md`](storyboard.md) | Scene-by-scene map: timing · visual · narration · subtitle. |
-| [`render_explainer.py`](render_explainer.py) | Local renderer that builds slides, mixes audio, and burns subtitles into `explainer.mp4`. |
-| [`explainer.mp4`](explainer.mp4) | Final rendered 1080p MP4. |
+| File | Purpose |
+| --- | --- |
+| `explainer.mp4` | Final 1920x1080 MP4, 30fps, English narration, Hebrew one-line burned-in captions. |
+| `hyperframes-recovery/` | Hyperframes source project for the new motion-graphics version. |
+| `narration-en.md` | Locked English narration script used by the voice-over. |
+| `subtitles-he.srt` | Legacy subtitle timing reference. The current video renders captions directly in Hyperframes. |
+| `storyboard.md` | Original explainer storyboard reference. |
 
-## Visual assets (in order)
+## Visual Direction
 
-1. `../assets/recovery-cover.png`
-2. Generated “File not found” slide from `render_explainer.py`
-3. Generated exact-path workflow slide from `render_explainer.py`
-4. `../assets/screenshots/01-compare.png`
-5. `../assets/screenshots/02-restore.png`
-6. `../assets/screenshots/03-verify.png`
-7. Generated close card from `../assets/recovery-cover.png`
+The current video is no longer built from the repository screenshots or cover images. It uses a fresh Hyperframes composition with:
 
-## How to build it / איך מרכיבים
+- abstract phone silhouettes and data-transfer motion,
+- YUV-style dark stage, pink/yellow accent thread, glass cards, and scan-grid effects,
+- local Rubik Black for Hebrew captions and Anton for English labels,
+- one Hebrew subtitle line per scene,
+- English TTS narration plus background music.
 
-Run the renderer from the repository root:
+## Build
+
+From the repository root:
 
 ```powershell
-python .\video\render_explainer.py --ffmpeg "C:\path\to\ffmpeg.exe" --out .\video\explainer.mp4
+cd .\video\hyperframes-recovery
+npx hyperframes lint
+npx hyperframes validate
+npx hyperframes inspect
+npx hyperframes render --quality high --output renders\video.mp4 --strict
+cd ..\..
+ffmpeg -y -t 60 -i .\video\hyperframes-recovery\renders\video.mp4 -c copy .\video\explainer.mp4
 ```
 
-The script creates temporary PNG slides under `video/build/`, mixes:
-
-- `video/assets/narration.wav`
-- `video/assets/bg-music.mp3`
-- `video/subtitles-he.srt`
-
-and writes the final MP4 to `video/explainer.mp4`.
-
-Manual editors can still follow `storyboard.md` if they want to recreate or adapt the timeline.
+The `renders/` and `snapshots/` folders are generated artifacts and are intentionally ignored by Git. Commit `video/explainer.mp4` as the publishable video.

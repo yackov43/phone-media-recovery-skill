@@ -8,3 +8,5 @@ recovery_plan/
 case/
 video/build/
 video/qc/
+video/hyperframes-recovery/renders/
+video/hyperframes-recovery/snapshots/
