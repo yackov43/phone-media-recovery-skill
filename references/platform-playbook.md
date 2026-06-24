@@ -29,32 +29,14 @@ Notes:
 - Android `toybox` tools vary by version. Test `stat`, `md5sum`, `sha256sum`, and `tar` before relying on them.
 - Some app folders are inaccessible without root. If the needed data is inside private app storage, use app export, cloud restore, or a backup route instead of forcing filesystem access.
 
-## iPhone
+## Out Of Scope: iPhone / Cross-Platform
 
-Direct filesystem access is limited. Use these routes:
+This skill targets **Android-to-Android** recovery only. iPhone/iOS access (Finder/iTunes/iCloud backups, app containers) and cross-platform migrations are out of scope.
 
-1. Finder/iTunes encrypted backup, then inspect media inside the backup with a trusted parser.
-2. iCloud Photos or iCloud Drive download for gallery/files cases.
-3. DCIM import for camera media.
-4. App-native export, chat export, or cloud restore when the app supports it.
-5. Device-to-device migration logs or staging files only when available and trusted.
+## Important Distinction
 
-Important constraints:
-
-- App media inside iOS app containers is usually not accessible directly from USB.
-- Encrypted backups preserve more app data than unencrypted backups.
-- A backup may contain files that are no longer visible in the current app UI, but it may also omit cloud-only placeholders.
-- Do not modify an iPhone backup in place unless the user explicitly wants a backup surgery workflow and accepts the risk.
-
-## Mixed Phone Migrations
-
-When moving between Android and iPhone:
-
-1. Do not assume filesystem paths will match exactly across platforms.
-2. Compare within equivalent app export roots, not full device roots.
-3. Prefer app-native migration records if available.
-4. Separate "file recovery" from "database/chat index repair". Restoring a file does not always make a chat database reference it.
+Separate "file recovery" from "database/chat index repair". Restoring a file does not always make a chat database reference it immediately; the app may need a restart, reboot, or media re-index.
 
 ## No-Root Principle
 
-This skill assumes no root/jailbreak unless the user explicitly says otherwise. Use user-accessible storage, official backups, app exports, and verified copies first.
+This skill assumes no root unless the user explicitly says otherwise. Use user-accessible storage, official backups, app exports, and verified copies first.

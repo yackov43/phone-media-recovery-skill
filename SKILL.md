@@ -1,13 +1,13 @@
 ---
 name: phone-media-recovery
-description: Recover missing, partial, or inaccessible phone media when moving data between old and new phones. Use for Android, iPhone, or vendor-transfer recovery projects involving WhatsApp or similar app media, DCIM/gallery files, documents, audio, videos, stickers, voice notes, exact path matching, manifest comparison, verified copy, checksum validation, timestamp preservation, ADB/tar workflows, local phone backups, and deciding what cannot be recovered from files.
+description: Recover missing, partial, or inaccessible Android phone media when moving data between an old and a new Android phone. Use for Android device-to-device recovery projects involving WhatsApp or similar app media, DCIM/gallery files, documents, audio, videos, stickers, voice notes, exact path matching, manifest comparison, verified copy, checksum validation, timestamp preservation, ADB/tar workflows, local phone backups, and deciding what cannot be recovered from files. Android only (no iPhone/iOS).
 ---
 
 # Phone Media Recovery
 
 ## Purpose
 
-Use this skill to investigate and safely restore phone media after a migration, backup restore, cable transfer, Smart Switch/Move to iOS/vendor transfer, or manual copy left messages or gallery entries pointing to missing files.
+Use this skill to investigate and safely restore Android phone media after a migration, backup restore, cable transfer, Smart Switch/vendor transfer, or manual copy left messages or gallery entries pointing to missing files. Scope: Android-to-Android only (iPhone/iOS is out of scope).
 
 The recovery standard is conservative: restore only files that can be matched by exact path and filename, or replace files that exist in the destination but are objectively incomplete or different by size/checksum. Do not guess by visual similarity, display name, thumbnail, date alone, or approximate size.
 
@@ -45,11 +45,12 @@ Record the app, media categories, source type, destination type, and whether the
 
 Use `references/platform-playbook.md` when selecting an access path.
 
-Common paths:
+Common Android access paths:
 
-- Android: ADB, MTP export, vendor desktop tools, app-visible external storage.
-- iPhone: Finder/iTunes backup, iCloud Photos download, DCIM import, app export, or a trusted backup parser. Direct app container access is usually unavailable without a backup or special tooling.
-- Mixed migration: build manifests from every accessible source, normalize paths by app-relative roots, and compare only equivalent folders.
+- ADB with USB debugging (preferred).
+- MTP export for simple gallery/DCIM cases.
+- Vendor desktop transfer tools when ADB is unavailable.
+- App-visible external storage and SD cards.
 
 ### 3. Build Manifests
 

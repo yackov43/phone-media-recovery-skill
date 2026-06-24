@@ -4,16 +4,22 @@
 
 # 📱 Phone Media Recovery · שחזור מדיה מהטלפון
 
-### Safely recover missing phone media after a device migration — exact path matching, verified transfers, checksum validation.
-### שחזור בטוח של מדיה חסרה אחרי מעבר טלפון — התאמת נתיב מדויקת, העברה מאומתת, אימות טביעת-אצבע.
+### Safely recover missing media between two Android phones — exact path matching, verified transfers, checksum validation.
+### שחזור בטוח של מדיה חסרה בין שני טלפוני אנדרואיד — התאמת נתיב מדויקת, העברה מאומתת, אימות טביעת-אצבע.
 
 <br>
 
 ![Type](https://img.shields.io/badge/type-AI%20Agent%20Skill-0F766E?style=for-the-badge)
-![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20iPhone-0F766E?style=for-the-badge)
+![Platform](https://img.shields.io/badge/platform-Android%20only-0F766E?style=for-the-badge)
 ![Transfer](https://img.shields.io/badge/transfer-ADB%20%2B%20tar-0F766E?style=for-the-badge)
 ![Verify](https://img.shields.io/badge/verify-MD5%20%2F%20SHA--256-0F766E?style=for-the-badge)
 ![Safety](https://img.shields.io/badge/data-additive%20%C2%B7%20never%20deletes-16A34A?style=for-the-badge)
+![License](https://img.shields.io/badge/license-MIT-555?style=for-the-badge)
+
+<br>
+
+> **📌 Scope:** Android-to-Android recovery (via ADB). iPhone / cross-platform is **not** supported.
+> **📌 היקף:** שחזור אנדרואיד-לאנדרואיד (דרך ADB). iPhone / חוצה-פלטפורמות **אינו** נתמך.
 
 <br>
 
@@ -29,7 +35,7 @@
 
 ## 📖 מה זה?
 
-כשמעבירים טלפון — **Samsung Smart Switch, Move to iOS, העברה בכבל, שחזור גיבוי או העתקה ידנית** — מסד הנתונים של הצ'אטים והגלריה בדרך כלל עובר, אבל **קובצי המדיה עצמם לרוב לא מועתקים במלואם**.
+כשמעבירים **טלפון אנדרואיד** — **Samsung Smart Switch, העברה בכבל, שחזור גיבוי (Google/מקומי), או העתקה ידנית** — מסד הנתונים של הצ'אטים והגלריה בדרך כלל עובר, אבל **קובצי המדיה עצמם לרוב לא מועתקים במלואם**.
 
 התוצאה מבלבלת ומתסכלת: וואטסאפ מציג מסמך, תמונה מופיעה בצ'אט, סרטון יושב בשיחה — אבל בלחיצה מקבלים **"הקובץ לא נמצא"** או **חץ הורדה** תקוע.
 
@@ -47,7 +53,7 @@
 
 | אתה… | זה עוזר לך… |
 |------|-------------|
-| **החלפת טלפון** | להחזיר מסמכים/תמונות/סרטונים של וואטסאפ שמראים "הקובץ לא נמצא". |
+| **החלפת טלפון אנדרואיד** | להחזיר מסמכים/תמונות/סרטונים של וואטסאפ שמראים "הקובץ לא נמצא". |
 | **טכנאי / מעבדה** | להריץ שחזור שמרני ומאומת בין שני טלפוני אנדרואיד. |
 | **משתמש מתקדם / הקשר פורנזי** | להפיק תיעוד שחזור מאומת לפי checksum ותאריך מדויק. |
 
@@ -71,8 +77,8 @@
 
 | # | שלב | מה קורה |
 |---|-----|---------|
-| **1** | **מיפוי מקורות והיקף** | אינוונטר של כל מקור: טלפון ישן, חדש, ייצוא במחשב, תיקיות staging, גיבויים, כרטיסי SD, ענן באפליקציה. |
-| **2** | **בחירת גישה לפלטפורמה** | הדרך הבטוחה ביותר (ADB / MTP / קורא גיבוי / ענן). ראה [`platform-playbook.md`](references/platform-playbook.md). |
+| **1** | **מיפוי מקורות והיקף** | אינוונטר של כל מקור: טלפון ישן, חדש, ייצוא במחשב, תיקיות staging, גיבויים, כרטיסי SD. |
+| **2** | **בחירת גישה למכשיר** | הדרך הבטוחה ביותר (ADB / MTP / כלי יצרן / כרטיס SD). ראה [`platform-playbook.md`](references/platform-playbook.md). |
 | **3** | **בניית מניפסטים** | רשימת כל קובץ בכל צד כ-`epoch\|size\|path`. באנדרואיד: `find … -exec stat -c '%Y\|%s\|%n' {} +`. |
 | **4** | **השוואת מניפסטים** | השוואה דטרמיניסטית → `missing.txt`, `different.txt`, `touch.txt`, `summary.json`. |
 | **5** | **שחזור (בטוח-שמות)** | העברה דרך `tar` על המכשיר כדי שהשמות המדויקים ישרדו — לא קבצים בודדים דרך Windows. |
@@ -108,7 +114,7 @@
   ```sh
   touch -d "@1712345678" "$DEST/relative/path/file.ext"
   ```
-- **דגלים אדומים שעוצרים את התהליך:** קובץ משוחזר `0` בייט בעוד המקור לא · שם השתנה (נקודה/רווח בסוף, Unicode חריג) · ספירת `find` כוללת לא תואמת לסריקה לפי תיקייה · האפליקציה עדיין מראה חסר אחרי שחזור מאומת + אתחול (מצביע על DB/ענן/אינדוקס).
+- **דגלים אדומים שעוצרים את התהליך:** קובץ משוחזר `0` בייט בעוד המקור לא · שם השתנה (נקודה/רווח בסוף, Unicode חריג) · ספירת `find` כוללת לא תואמת לסריקה לפי תיקייה · האפליקציה עדיין מראה חסר אחרי שחזור מאומת + אתחול.
 
 ## 🚫 מה הכלי **לא** יעתיק
 
@@ -122,7 +128,7 @@
 
 ## 📖 What is this?
 
-When you move a phone — **Samsung Smart Switch, Move to iOS, a cable transfer, a backup restore, or a manual copy** — the chat and gallery *database* usually moves, but the actual **media files often do not fully copy across**.
+When you move an **Android phone** — **Samsung Smart Switch, a cable transfer, a Google/local backup restore, or a manual copy** — the chat and gallery *database* usually moves, but the actual **media files often do not fully copy across**.
 
 The result is painful and confusing: WhatsApp shows a document, a photo appears in a chat, a video sits in the conversation — but when you tap it you get **“File not found”** or a stuck **download arrow**.
 
@@ -140,7 +146,7 @@ It is built around one strict promise: **no guessing.** Files are matched by *ex
 
 | You are… | This helps you… |
 |----------|-----------------|
-| **Someone who switched phones** | Get back WhatsApp documents/photos/videos that show “file not found”. |
+| **Someone who switched Android phones** | Get back WhatsApp documents/photos/videos that show “file not found”. |
 | **A technician / repair shop** | Run an auditable, conservative recovery between two Android phones. |
 | **A power user / forensic context** | Produce checksum-verified, timestamp-accurate restoration records. |
 
@@ -164,8 +170,8 @@ It is built around one strict promise: **no guessing.** Files are matched by *ex
 
 | # | Stage | What happens |
 |---|-------|--------------|
-| **1** | **Establish sources & scope** | Inventory every source: old phone, new phone, computer exports, vendor staging, backups, SD cards, app cloud. |
-| **2** | **Choose platform access** | Pick the safest path (ADB / MTP / backup parser / cloud). |
+| **1** | **Establish sources & scope** | Inventory every source: old phone, new phone, computer exports, vendor staging, backups, SD cards. |
+| **2** | **Choose device access** | Pick the safest path (ADB / MTP / vendor tools / SD card). |
 | **3** | **Build manifests** | List every file per side as `epoch\|size\|path`. |
 | **4** | **Compare manifests** | Deterministic diff → `missing.txt`, `different.txt`, `touch.txt`, `summary.json`. |
 | **5** | **Restore (filename-safe)** | Transfer via on-device `tar` so exact names survive. |
@@ -219,6 +225,8 @@ To protect the destination phone, these are **never** copied blindly: app databa
 | **Python 3.8+** | `scripts/compare_manifests.py` |
 | **PowerShell 7+** | `scripts/android_tar_restore.ps1` |
 | **ffmpeg / ffprobe** *(optional / רשות)* | Inspecting media / בדיקת מדיה |
+
+> Both phones need **USB debugging (ADB)** enabled. / שני הטלפונים צריכים **ניפוי באגים USB (ADB)** מופעל.
 
 ### Option A — Claude Code skill
 
@@ -295,9 +303,10 @@ powershell -ExecutionPolicy Bypass -File scripts/android_tar_restore.ps1 `
 phone-media-recovery-skill/
 ├── SKILL.md                       # Skill definition (rules + workflow)
 ├── README.md                      # You are here
+├── LICENSE                        # MIT
 ├── agents/openai.yaml             # Codex / OpenAI agent manifest
 ├── references/
-│   ├── platform-playbook.md       # Android / iPhone / mixed access paths
+│   ├── platform-playbook.md       # Android access paths
 │   ├── recovery-cases.md          # Case A–F classification
 │   └── verification.md            # Checksum, timestamp & audit practices
 ├── scripts/
@@ -314,19 +323,23 @@ phone-media-recovery-skill/
 ## 📚 References
 
 - **[`SKILL.md`](SKILL.md)** — the full skill definition.
-- **[`references/platform-playbook.md`](references/platform-playbook.md)** — access paths for Android, iPhone, mixed.
+- **[`references/platform-playbook.md`](references/platform-playbook.md)** — Android access paths.
 - **[`references/recovery-cases.md`](references/recovery-cases.md)** — case classification.
 - **[`references/verification.md`](references/verification.md)** — checksum, timestamp & audit practices.
 
 ---
 
+## 📄 License
+
+Released under the [MIT License](LICENSE). © 2026 yackov43.
+
 ## ⚠️ Disclaimer / הבהרה
 
-**EN:** Works on user-accessible storage, official backups, app exports, and verified copies — assumes **no root/jailbreak** unless you choose otherwise. Conservative by design and additive by default, but you are responsible for backing up important data first. Files never downloaded to any available source (cloud-only) cannot be reconstructed from local files.
+**EN:** Android-to-Android recovery only. Works on user-accessible storage, official backups, and verified copies — assumes **no root** unless you choose otherwise. Conservative by design and additive by default, but you are responsible for backing up important data first. Files never downloaded to any available source (cloud-only) cannot be reconstructed from local files.
 
-**עברית:** עובד על אחסון נגיש למשתמש, גיבויים רשמיים, ייצוא אפליקציה ועותקים מאומתים — מניח **ללא root/jailbreak** אלא אם תבחר אחרת. שמרני ותוספתי בברירת מחדל, אך באחריותך לגבות נתונים חשובים תחילה. קבצים שמעולם לא הורדו לאף מקור (ענן בלבד) לא ניתנים לשחזור מקבצים מקומיים.
+**עברית:** שחזור אנדרואיד-לאנדרואיד בלבד. עובד על אחסון נגיש למשתמש, גיבויים רשמיים ועותקים מאומתים — מניח **ללא root** אלא אם תבחר אחרת. שמרני ותוספתי בברירת מחדל, אך באחריותך לגבות נתונים חשובים תחילה. קבצים שמעולם לא הורדו לאף מקור (ענן בלבד) לא ניתנים לשחזור מקבצים מקומיים.
 
 <div align="center">
 <br>
-<sub>Built for trustworthy, verifiable phone-media recovery · no guessing, only exact matches.<br>נבנה לשחזור מדיה אמין ומאומת · בלי ניחושים, רק התאמות מדויקות.</sub>
+<sub>Built for trustworthy, verifiable Android media recovery · no guessing, only exact matches.<br>נבנה לשחזור מדיה אמין ומאומת באנדרואיד · בלי ניחושים, רק התאמות מדויקות.</sub>
 </div>
