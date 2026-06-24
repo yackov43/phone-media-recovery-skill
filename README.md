@@ -47,8 +47,8 @@
 
 </div>
 
-> 🎬 A full explainer-video kit (English narration + Hebrew subtitles) lives in [`video/`](video/).
-> 🎬 ערכת סרטון הסברה מלאה (קריינות אנגלית + כתוביות עברית) נמצאת ב-[`video/`](video/).
+> 🎬 **Watch the 60-second explainer:** [`video/explainer.mp4`](video/explainer.mp4) — English narration (Gemini TTS) · Hebrew subtitles · original instrumental score (Suno). Full source kit in [`video/`](video/).
+> 🎬 **צפה בסרטון ההסברה (דקה):** [`video/explainer.mp4`](video/explainer.mp4) — קריינות אנגלית · כתוביות עברית · פסקול מקורי. ערכת המקור ב-[`video/`](video/).
 
 ---
 
