@@ -1,6 +1,12 @@
 <div align="center">
 
-<img src="assets/phone-media-recovery-preview.gif" alt="Phone Media Recovery explainer video preview" width="100%">
+<a href="https://www.youtube.com/watch?v=cNEPKDaPgWk">
+  <img src="https://img.youtube.com/vi/cNEPKDaPgWk/maxresdefault.jpg" alt="Watch the Phone Media Recovery explainer on YouTube" width="100%">
+</a>
+
+<br>
+
+### ▶ Watch on YouTube with sound and player controls
 
 <br>
 
