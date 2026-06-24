@@ -1,12 +1,16 @@
 <div align="center">
 
-<video src="https://github.com/yackov43/phone-media-recovery-skill/raw/main/assets/phone-media-recovery-explainer.mp4" controls width="100%" poster="assets/recovery-cover.png">
-  <a href="https://github.com/yackov43/phone-media-recovery-skill/raw/main/assets/phone-media-recovery-explainer.mp4">Watch the 60-second explainer video</a>
-</video>
+<a href="https://github.com/yackov43/phone-media-recovery-skill/raw/main/assets/phone-media-recovery-explainer.mp4">
+  <img src="assets/phone-media-recovery-preview.gif" alt="Watch the Phone Media Recovery explainer video" width="100%">
+</a>
 
 <br>
 
-<img src="assets/recovery-cover.png" alt="Phone Media Recovery" width="840">
+### ▶ Watch the full 60-second explainer with sound
+
+<a href="https://github.com/yackov43/phone-media-recovery-skill/raw/main/assets/phone-media-recovery-explainer.mp4">
+  Open video · פתח סרטון
+</a>
 
 # 📱 Phone Media Recovery · שחזור מדיה מהטלפון
 
