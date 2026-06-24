@@ -2,9 +2,10 @@
 
 <img src="assets/recovery-cover.png" alt="Phone Media Recovery" width="840">
 
-# 📱 Phone Media Recovery
+# 📱 Phone Media Recovery · שחזור מדיה מהטלפון
 
-### Safely recover missing, partial, or inaccessible phone media after a device migration — with exact path matching, manifest comparison, verified transfers, and checksum validation.
+### Safely recover missing phone media after a device migration — exact path matching, verified transfers, checksum validation.
+### שחזור בטוח של מדיה חסרה אחרי מעבר טלפון — התאמת נתיב מדויקת, העברה מאומתת, אימות טביעת-אצבע.
 
 <br>
 
@@ -14,9 +15,110 @@
 ![Verify](https://img.shields.io/badge/verify-MD5%20%2F%20SHA--256-0F766E?style=for-the-badge)
 ![Safety](https://img.shields.io/badge/data-additive%20%C2%B7%20never%20deletes-16A34A?style=for-the-badge)
 
+<br>
+
+### 🌐 &nbsp; **[🇮🇱 עברית](#hebrew)** &nbsp;·&nbsp; **[🇬🇧 English](#english)**
+
 </div>
 
 ---
+
+<a id="hebrew"></a>
+
+# 🇮🇱 עברית
+
+## 📖 מה זה?
+
+כשמעבירים טלפון — **Samsung Smart Switch, Move to iOS, העברה בכבל, שחזור גיבוי או העתקה ידנית** — מסד הנתונים של הצ'אטים והגלריה בדרך כלל עובר, אבל **קובצי המדיה עצמם לרוב לא מועתקים במלואם**.
+
+התוצאה מבלבלת ומתסכלת: וואטסאפ מציג מסמך, תמונה מופיעה בצ'אט, סרטון יושב בשיחה — אבל בלחיצה מקבלים **"הקובץ לא נמצא"** או **חץ הורדה** תקוע.
+
+**Phone Media Recovery** היא מתודולוגיה ממושמעת + כלים, ש:
+
+1. **מאתרים בדיוק אילו קבצים חסרים** — בהשוואת שני הטלפונים קובץ-מול-קובץ.
+2. **משחזרים רק אותם** — לנתיב המקורי המדויק, בייט-בבייט.
+3. **מוכיחים שזה עבד** — אימות גודל + טביעת-אצבע (checksum) ושימור התאריך המקורי.
+
+הכלל המרכזי: **בלי ניחושים.** התאמה לפי **נתיב ושם מדויקים בלבד** — לעולם לא לפי "נראה דומה", שם תצוגה, תמונה ממוזערת או גודל מקורב. זה מה שהופך את השחזור לאמין.
+
+> הסקיל נולד ממקרה אמיתי: ~12,000 קובצי מדיה של וואטסאפ ש-Smart Switch השמיט בשקט בשדרוג טלפון — שוחזרו ואומתו ללא אובדן נתונים.
+
+## 👥 למי זה מיועד
+
+| אתה… | זה עוזר לך… |
+|------|-------------|
+| **החלפת טלפון** | להחזיר מסמכים/תמונות/סרטונים של וואטסאפ שמראים "הקובץ לא נמצא". |
+| **טכנאי / מעבדה** | להריץ שחזור שמרני ומאומת בין שני טלפוני אנדרואיד. |
+| **משתמש מתקדם / הקשר פורנזי** | להפיק תיעוד שחזור מאומת לפי checksum ותאריך מדויק. |
+
+**קטגוריות מדיה:** מסמכים · תמונות · סרטונים · אודיו · הודעות קוליות · הודעות וידאו · סטיקרים · GIF · גלריה/DCIM · הורדות — וכל מה ששמור תחת תיקיית המדיה של אפליקציה.
+
+## 🧭 תקן השחזור — 7 עקרונות
+
+1. **שמירה על נתוני המשתמש קודם.** לעולם לא למחוק/לדרוס קובץ ביעד אלא אם זה אותו נתיב מדויק *וגם* המקור הוא עותק חזק יותר ומאומת — או באישור מפורש.
+2. **להבדיל בין שלושת המצבים:** `חסר` (יש במקור, אין ביעד) · `חלקי/פגום` (קיים בשניהם אבל גדלים שונים) · `לא הורד/ענן בלבד` (גם המקור חסר אותו → לא ניתן לשחזר מקבצים).
+3. **להשוות נתיבי אחסון, לא שמות תצוגה.** אפליקציות מציגות שם ידידותי אבל שומרות שם מקודד (`DOC-20260601-WA0038`, `IMG-…`, לפעמים *בלי סיומת*).
+4. **לאמת כל קובץ משוחזר** בגודל **וגם** ב-checksum (MD5 למהירות, SHA-256 לביקורת).
+5. **לשמר תאריכים** — רוב כלי ההעתקה מאפסים את זמן השינוי; כאן משחזרים את המקורי.
+6. **להימנע ממלכודות נירמול נתיב של Windows** — שמות שמסתיימים בנקודה או עם Unicode חריג לא "שורדים" תיקייה של Windows, ולכן ההעברה דרך **ארכיון/זרם** (`tar`), לא קבצים בודדים.
+7. **לתעד בבירור את המקרים שאינם ניתנים לשחזור** במקום לזייף תוצאה.
+
+## 🔁 איך זה עובד
+
+<div align="center">
+<img src="assets/recovery-workflow.svg" alt="תהליך השחזור" width="820">
+</div>
+
+| # | שלב | מה קורה |
+|---|-----|---------|
+| **1** | **מיפוי מקורות והיקף** | אינוונטר של כל מקור: טלפון ישן, חדש, ייצוא במחשב, תיקיות staging, גיבויים, כרטיסי SD, ענן באפליקציה. |
+| **2** | **בחירת גישה לפלטפורמה** | הדרך הבטוחה ביותר (ADB / MTP / קורא גיבוי / ענן). ראה [`platform-playbook.md`](references/platform-playbook.md). |
+| **3** | **בניית מניפסטים** | רשימת כל קובץ בכל צד כ-`epoch\|size\|path`. באנדרואיד: `find … -exec stat -c '%Y\|%s\|%n' {} +`. |
+| **4** | **השוואת מניפסטים** | השוואה דטרמיניסטית → `missing.txt`, `different.txt`, `touch.txt`, `summary.json`. |
+| **5** | **שחזור (בטוח-שמות)** | העברה דרך `tar` על המכשיר כדי שהשמות המדויקים ישרדו — לא קבצים בודדים דרך Windows. |
+| **6** | **אימות** | סריקה מחדש ועצמאית של שני הצדדים; השוואת גודל + checksum לכל נתיב; שחזור תאריכים; בדיקה באפליקציה. |
+| **7** | **חקירת "עדיין חסר"** | הרחבת היקף (סטיקרים, סטטוסים, קבצים בלי סיומת), ובדיקת קבצים *חלקיים*, לא רק חסרים. |
+
+## 🗂️ סיווג מקרי שחזור
+
+<div align="center">
+<img src="assets/case-classification.svg" alt="סיווג מקרים" width="820">
+</div>
+
+| מקרה | מצב | פעולה |
+|------|-----|-------|
+| **A — חסר** | יש במקור, אין ביעד. | שחזור הנתיב המדויק, שימור תאריך, אימות. |
+| **B — חלקי/פגום** | אותו נתיב בשניהם, אך גודל/checksum שונים. | לאשר כוונה → להחליף בהעברה בטוחה → לאמת. |
+| **C — כפתור הורדה** | האפליקציה מצפה להורדה מהשרת; אין קובץ מקומי בשום מקום. | להשתמש בהורדה של האפליקציה — **לא** ניתן לשחזר מקבצים. |
+| **D — אי-התאמת שם** | האפליקציה מציגה שם ידידותי; בדיסק שם מקודד. | התאמה לפי מטא-דאטה ונתיב, לא לפי השם הנראה. |
+| **E — קטגוריות מחוץ להיקף** | סטיקרים, הודעות קוליות, סטטוסים, קבצים בלי סיומת. | לסרוק כל קטגוריה בנפרד ולהשוות. |
+| **F — מטמון/DB/גיבוי** | זמני, תמונות ממוזערות, מסדי נתונים, אשפה. | **לא להעתיק כברירת מחדל** — חקירה בלבד. |
+
+## ✅ אימות וביקורת
+
+האימות **בלתי תלוי בפקודת ההעתקה** — העברה "הושלמה" רק כשסריקה טרייה ונפרדת מוכיחה זאת.
+
+<div align="center">
+<img src="assets/verification-loop.svg" alt="לולאת אימות" width="760">
+</div>
+
+- **בדיקת מינימום לכל קובץ:** נתיב יחסי · גודל בבייטים · checksum · תאריך.
+- **בחירת checksum:** `MD5` להשוואה מהירה באותו סשן · `SHA-256` לביקורת/משפט/תיעוד ארוך-טווח.
+- **שימור תאריך:** לרשום epoch במניפסט, ואז להחיל מחדש אחרי השחזור:
+  ```sh
+  touch -d "@1712345678" "$DEST/relative/path/file.ext"
+  ```
+- **דגלים אדומים שעוצרים את התהליך:** קובץ משוחזר `0` בייט בעוד המקור לא · שם השתנה (נקודה/רווח בסוף, Unicode חריג) · ספירת `find` כוללת לא תואמת לסריקה לפי תיקייה · האפליקציה עדיין מראה חסר אחרי שחזור מאומת + אתחול (מצביע על DB/ענן/אינדוקס).
+
+## 🚫 מה הכלי **לא** יעתיק
+
+כדי להגן על הטלפון החדש, אלה **לעולם** לא מועתקים באופן עיוור: מסדי נתונים של אפליקציה · גיבויים מוצפנים בלי תאימות מפתח/גרסה · תיקיות מטמון (`.tmp`, תמונות ממוזערות, תורי עבודה) · תיקיות אשפה · placeholders של ענן.
+
+---
+
+<a id="english"></a>
+
+# 🇬🇧 English
 
 ## 📖 What is this?
 
@@ -30,54 +132,29 @@ The result is painful and confusing: WhatsApp shows a document, a photo appears 
 2. **Restores only those files** — to their exact original path, byte-for-byte.
 3. **Proves it worked** — with size + checksum verification and original-timestamp preservation.
 
-It is built around one strict promise: **no guessing.** Files are matched by *exact path and filename* — never by “looks similar”, display name, thumbnail, or approximate size. This is what makes the recovery trustworthy.
+It is built around one strict promise: **no guessing.** Files are matched by *exact path and filename* — never by “looks similar”, display name, thumbnail, or approximate size.
 
 > This skill was forged from a real-world recovery: ~12,000 WhatsApp media files that Smart Switch silently dropped during a phone upgrade, restored and verified with zero data loss.
-
----
-
-## 📑 Table of Contents
-
-- [Who it's for](#-who-its-for)
-- [The recovery standard](#-the-recovery-standard)
-- [How it works](#-how-it-works)
-- [Recovery case classification](#-recovery-case-classification)
-- [Verification &amp; audit](#-verification--audit)
-- [What it will *not* copy](#-what-it-will-not-copy)
-- [Installation](#-installation)
-- [Quick start](#-quick-start)
-- [Scripts](#-scripts)
-- [Repository structure](#-repository-structure)
-- [References](#-references)
-- [Disclaimer](#-disclaimer)
-
----
 
 ## 👥 Who it's for
 
 | You are… | This helps you… |
 |----------|-----------------|
-| **Someone who switched phones** | Get back WhatsApp documents/photos/videos that show “file not found” after the transfer. |
+| **Someone who switched phones** | Get back WhatsApp documents/photos/videos that show “file not found”. |
 | **A technician / repair shop** | Run an auditable, conservative recovery between two Android phones. |
 | **A power user / forensic context** | Produce checksum-verified, timestamp-accurate restoration records. |
 
-**Media categories covered:** documents · images · videos · audio · voice notes · video notes · stickers · GIFs · DCIM/gallery · downloads — and anything stored under an app's media root.
+**Media categories:** documents · images · videos · audio · voice notes · video notes · stickers · GIFs · DCIM/gallery · downloads — and anything under an app's media root.
 
----
+## 🧭 The recovery standard — 7 rules
 
-## 🧭 The recovery standard
-
-The core philosophy is **conservative and verifiable**. Seven rules drive every decision:
-
-1. **Preserve user data first.** Never delete or overwrite a destination file unless it is the exact same intended path *and* the source is a stronger, verified copy — or the user explicitly approves.
-2. **Distinguish the three states:** `missing` (source has it, destination doesn't) vs. `partial/corrupt` (both have it, sizes differ) vs. `not-downloaded/cloud-only` (the source phone lacks it too → not recoverable from files).
-3. **Compare storage paths, not display names.** Messaging apps show friendly names but store encoded ones (`DOC-20260601-WA0038`, `IMG-…`, sometimes *no extension*).
+1. **Preserve user data first.** Never delete/overwrite a destination file unless it is the exact same path *and* the source is a stronger, verified copy — or the user explicitly approves.
+2. **Distinguish the three states:** `missing` vs. `partial/corrupt` (sizes differ) vs. `not-downloaded/cloud-only` (source lacks it too → not recoverable from files).
+3. **Compare storage paths, not display names.** Apps show friendly names but store encoded ones (`DOC-20260601-WA0038`, sometimes *no extension*).
 4. **Verify every restored file** with byte size **and** checksum (MD5 for speed, SHA-256 for audit).
 5. **Preserve timestamps** — most copy tools reset modified-time; this restores the original.
-6. **Avoid Windows path-normalization hazards** — names ending in a dot or with unusual Unicode can't round-trip through a Windows folder, so transfers use **archives/streams** (`tar`), not loose files.
+6. **Avoid Windows path-normalization hazards** — names ending in a dot or with unusual Unicode can't round-trip through a Windows folder, so transfers use **archives/streams** (`tar`).
 7. **Document the non-recoverable cases** clearly instead of faking a result.
-
----
 
 ## 🔁 How it works
 
@@ -85,23 +162,17 @@ The core philosophy is **conservative and verifiable**. Seven rules drive every 
 <img src="assets/recovery-workflow.svg" alt="Recovery workflow" width="820">
 </div>
 
-The skill follows a repeatable, seven-stage pipeline:
-
 | # | Stage | What happens |
 |---|-------|--------------|
-| **1** | **Establish sources & scope** | Inventory every source: old phone, new phone, computer exports, vendor staging, backups, SD cards, app cloud surfaces. |
-| **2** | **Choose platform access** | Pick the safest path (ADB / MTP / backup parser / cloud). See [`platform-playbook.md`](references/platform-playbook.md). |
-| **3** | **Build manifests** | For each side, list every file as `epoch\|size\|path`. On Android use `find … -exec stat -c '%Y\|%s\|%n' {} +` (Toybox has no `-printf`). |
+| **1** | **Establish sources & scope** | Inventory every source: old phone, new phone, computer exports, vendor staging, backups, SD cards, app cloud. |
+| **2** | **Choose platform access** | Pick the safest path (ADB / MTP / backup parser / cloud). |
+| **3** | **Build manifests** | List every file per side as `epoch\|size\|path`. |
 | **4** | **Compare manifests** | Deterministic diff → `missing.txt`, `different.txt`, `touch.txt`, `summary.json`. |
-| **5** | **Restore (filename-safe)** | Transfer via on-device `tar` so exact names survive — not loose files through Windows. |
-| **6** | **Verify** | Re-scan both sides independently; compare size + checksum per path; restore timestamps; spot-check in the app. |
-| **7** | **Investigate “still missing”** | Widen scope (stickers, statuses, profile photos, no-extension files), and re-check *partial* files, not only missing ones. |
-
----
+| **5** | **Restore (filename-safe)** | Transfer via on-device `tar` so exact names survive. |
+| **6** | **Verify** | Re-scan both sides independently; compare size + checksum; restore timestamps; spot-check in the app. |
+| **7** | **Investigate “still missing”** | Widen scope (stickers, statuses, no-extension files); re-check *partial* files too. |
 
 ## 🗂️ Recovery case classification
-
-Not every “missing” file is the same. The skill sorts each item into a case and acts accordingly:
 
 <div align="center">
 <img src="assets/case-classification.svg" alt="Recovery case classification" width="820">
@@ -110,15 +181,13 @@ Not every “missing” file is the same. The skill sorts each item into a case 
 | Case | Situation | Action |
 |------|-----------|--------|
 | **A — Missing** | Source has the exact path; destination doesn't. | Restore exact path, preserve timestamp, verify. |
-| **B — Partial / corrupt** | Same path on both, but size/checksum differ. | Confirm intent → replace via filename-safe transfer → verify. |
-| **C — Download button** | App expects a server/cloud download; no local file anywhere. | Use the app's own download/cloud restore — **not** recoverable from files. |
-| **D — Name mismatch** | App shows a friendly name; disk uses an encoded name. | Match by manifest metadata + app-relative path, never by visible name. |
-| **E — Out-of-scope categories** | Stickers, voice notes, statuses, profile photos, no-extension files. | Rescan each category independently and compare. |
-| **F — Cache / DB / backup diffs** | Temp, thumbnails, databases, trash. | **Do not copy by default** — investigation only. |
+| **B — Partial / corrupt** | Same path on both, size/checksum differ. | Confirm intent → replace via filename-safe transfer → verify. |
+| **C — Download button** | App expects a server download; no local file anywhere. | Use the app's own download — **not** recoverable from files. |
+| **D — Name mismatch** | App shows friendly name; disk uses encoded name. | Match by metadata + app-relative path, not the visible name. |
+| **E — Out-of-scope categories** | Stickers, voice notes, statuses, no-extension files. | Rescan each category independently. |
+| **F — Cache / DB / backup** | Temp, thumbnails, databases, trash. | **Do not copy by default** — investigation only. |
 
----
-
-## ✅ Verification &amp; audit
+## ✅ Verification & audit
 
 Verification is **independent of the copy command** — a transfer is only “done” when a fresh, separate scan proves it.
 
@@ -127,63 +196,51 @@ Verification is **independent of the copy command** — a transfer is only “do
 </div>
 
 - **Minimum check per file:** relative path · byte size · checksum · timestamp.
-- **Checksum choice:** `MD5` for fast same-session comparison · `SHA-256` for audit / legal / long-term records.
-- **Timestamp preservation:** record epoch in the manifest, then re-apply after restore:
+- **Checksum choice:** `MD5` for fast same-session comparison · `SHA-256` for audit/legal records.
+- **Timestamp preservation:**
   ```sh
   touch -d "@1712345678" "$DEST/relative/path/file.ext"
   ```
-- **Red flags that stop the process:** a restored file is `0` bytes while the source isn't · a filename changed (trailing dot/space, odd Unicode) · full-tree `find` totals disagree with per-folder scans · the app still shows the file missing after a verified restore + reboot (points to DB/cloud/indexing, not the file).
-
-See [`references/verification.md`](references/verification.md) for the full audit layout.
-
----
+- **Red flags that stop the process:** a restored file is `0` bytes while the source isn't · a filename changed · full-tree totals disagree with per-folder scans · the app still shows the file missing after a verified restore + reboot.
 
 ## 🚫 What it will *not* copy
 
-To protect the destination phone, these are **never** copied blindly:
-
-- App **databases** from one active install into another.
-- **Encrypted backups** without known key/version compatibility.
-- **Cache** folders — temporary downloads, thumbnails, `.tmp`, `.enc.tmp`, work queues.
-- **Trash** folders (unless you explicitly ask to recover deleted media).
-- **Cloud placeholders** that are not complete files.
+To protect the destination phone, these are **never** copied blindly: app databases · encrypted backups without key/version compatibility · cache folders (`.tmp`, thumbnails, work queues) · trash folders · cloud placeholders.
 
 ---
 
-## ⚙️ Installation
+## ⚙️ Installation / התקנה
 
-### Prerequisites
+### Prerequisites / דרישות מקדימות
 
-| Tool | Needed for |
+| Tool / כלי | For / עבור |
 |------|-----------|
-| **[ADB](https://developer.android.com/tools/adb)** (Android Platform Tools) | Android device access & transfer |
+| **[ADB](https://developer.android.com/tools/adb)** (Android Platform Tools) | Android device access & transfer / גישה והעברה |
 | **Python 3.8+** | `scripts/compare_manifests.py` |
 | **PowerShell 7+** | `scripts/android_tar_restore.ps1` |
-| **ffmpeg / ffprobe** *(optional)* | Inspecting media (duration, frames) during identification |
+| **ffmpeg / ffprobe** *(optional / רשות)* | Inspecting media / בדיקת מדיה |
 
-### Option A — As a Claude Code skill
+### Option A — Claude Code skill
 
 ```bash
-# user-level (available in every project)
+# user-level / רמת משתמש
 git clone https://github.com/yackov43/phone-media-recovery-skill.git \
   ~/.claude/skills/phone-media-recovery
 
-# …or project-level
+# project-level / רמת פרויקט
 git clone https://github.com/yackov43/phone-media-recovery-skill.git \
   .claude/skills/phone-media-recovery
 ```
 
-Then invoke it naturally, e.g. *“Use the phone-media-recovery skill to find what didn't transfer between my old and new phone.”*
+### Option B — Codex / OpenAI agent skill
 
-### Option B — As a Codex / OpenAI agent skill
-
-The skill ships an agent manifest at [`agents/openai.yaml`](agents/openai.yaml). Place the folder in your agent's skills directory and register it; the default invocation is:
+Ships an agent manifest at [`agents/openai.yaml`](agents/openai.yaml). Place the folder in your agent's skills directory and register it. Default invocation:
 
 ```text
 Use $phone-media-recovery to diagnose and safely restore missing phone media between devices.
 ```
 
-### Option C — Standalone tooling
+### Option C — Standalone scripts / סקריפטים עצמאיים
 
 ```bash
 git clone https://github.com/yackov43/phone-media-recovery-skill.git
@@ -195,18 +252,15 @@ python scripts/compare_manifests.py --help
 
 ## 🚀 Quick start
 
-A typical Android-to-Android recovery:
-
 ```bash
-# 1) Confirm both phones are visible
+# 1) Confirm both phones / לוודא ששני הטלפונים מחוברים
 adb devices -l
 
-# 2) Build a manifest per media category on EACH phone
-#    (run for old and new; repeat per top-level folder)
+# 2) Build a manifest per category on EACH phone / מניפסט לכל קטגוריה בכל טלפון
 adb -s <SERIAL> shell "find '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents' \
   -type f -exec stat -c '%Y|%s|%n' {} +" > old_documents.txt
 
-# 3) Compare → produces missing.txt / different.txt / touch.txt / summary.json
+# 3) Compare → missing.txt / different.txt / touch.txt / summary.json
 python scripts/compare_manifests.py \
   --old old_documents.txt --new new_documents.txt \
   --old-root "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents/" \
@@ -215,37 +269,33 @@ python scripts/compare_manifests.py \
 ```
 
 ```powershell
-# 4) Restore exactly the missing files, filename-safe, with verification
+# 4) Restore the missing files, filename-safe, with verification
 powershell -ExecutionPolicy Bypass -File scripts/android_tar_restore.ps1 `
   -Adb "C:\path\to\adb.exe" `
   -OldSerial "<old-serial>" -NewSerial "<new-serial>" `
   -Base "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents" `
-  -List recovery_plan\missing.txt `
-  -TouchList recovery_plan\touch.txt `
-  -Key "documents"
+  -List recovery_plan\missing.txt -TouchList recovery_plan\touch.txt -Key "documents"
 ```
 
-The restore is **additive** — it only adds files the destination is missing. It never deletes or overwrites your existing data.
+> The restore is **additive** — it only adds files the destination is missing. It never deletes or overwrites your data.
+> השחזור הוא **תוספתי** — מוסיף רק קבצים שחסרים ביעד. לעולם לא מוחק ולא דורס.
 
 ---
 
 ## 📜 Scripts
 
-| Script | Purpose |
+| Script | Purpose / תפקיד |
 |--------|---------|
 | [`scripts/compare_manifests.py`](scripts/compare_manifests.py) | Deterministic manifest diff → `missing.txt`, `different.txt`, `touch.txt`, `summary.json`. |
-| [`scripts/android_tar_restore.ps1`](scripts/android_tar_restore.ps1) | Tar-based verified restore: stage list → archive on source → pull/push one archive → extract on destination → restore timestamps → emit old/new verification manifests; **fails** if size/checksum differ. |
-
----
+| [`scripts/android_tar_restore.ps1`](scripts/android_tar_restore.ps1) | Tar-based verified restore: archive on source → one pull/push → extract on destination → restore timestamps → verify (fails if size/checksum differ). |
 
 ## 📁 Repository structure
 
 ```text
 phone-media-recovery-skill/
-├── SKILL.md                       # The skill definition (rules + workflow)
+├── SKILL.md                       # Skill definition (rules + workflow)
 ├── README.md                      # You are here
-├── agents/
-│   └── openai.yaml                # Codex / OpenAI agent manifest
+├── agents/openai.yaml             # Codex / OpenAI agent manifest
 ├── references/
 │   ├── platform-playbook.md       # Android / iPhone / mixed access paths
 │   ├── recovery-cases.md          # Case A–F classification
@@ -261,22 +311,22 @@ phone-media-recovery-skill/
     └── icon-small.svg             # Skill icon
 ```
 
----
-
 ## 📚 References
 
-- **[`SKILL.md`](SKILL.md)** — the full skill definition (core rules + 7-stage workflow).
-- **[`references/platform-playbook.md`](references/platform-playbook.md)** — choosing an access path for Android, iPhone, and mixed migrations.
-- **[`references/recovery-cases.md`](references/recovery-cases.md)** — classifying missing, partial, cached, cloud-only, and risky cases.
-- **[`references/verification.md`](references/verification.md)** — checksum, timestamp, and audit practices.
+- **[`SKILL.md`](SKILL.md)** — the full skill definition.
+- **[`references/platform-playbook.md`](references/platform-playbook.md)** — access paths for Android, iPhone, mixed.
+- **[`references/recovery-cases.md`](references/recovery-cases.md)** — case classification.
+- **[`references/verification.md`](references/verification.md)** — checksum, timestamp & audit practices.
 
 ---
 
-## ⚠️ Disclaimer
+## ⚠️ Disclaimer / הבהרה
 
-This skill works on **user-accessible storage, official backups, app exports, and verified copies** — it assumes **no root/jailbreak** unless you explicitly choose otherwise. It is conservative by design and additive by default, but you are responsible for backing up important data before any device operation. Files that were *never downloaded* to any available source (cloud-only) cannot be reconstructed from local files.
+**EN:** Works on user-accessible storage, official backups, app exports, and verified copies — assumes **no root/jailbreak** unless you choose otherwise. Conservative by design and additive by default, but you are responsible for backing up important data first. Files never downloaded to any available source (cloud-only) cannot be reconstructed from local files.
+
+**עברית:** עובד על אחסון נגיש למשתמש, גיבויים רשמיים, ייצוא אפליקציה ועותקים מאומתים — מניח **ללא root/jailbreak** אלא אם תבחר אחרת. שמרני ותוספתי בברירת מחדל, אך באחריותך לגבות נתונים חשובים תחילה. קבצים שמעולם לא הורדו לאף מקור (ענן בלבד) לא ניתנים לשחזור מקבצים מקומיים.
 
 <div align="center">
 <br>
-<sub>Built for trustworthy, verifiable phone-media recovery · no guessing, only exact matches.</sub>
+<sub>Built for trustworthy, verifiable phone-media recovery · no guessing, only exact matches.<br>נבנה לשחזור מדיה אמין ומאומת · בלי ניחושים, רק התאמות מדויקות.</sub>
 </div>
