@@ -1,5 +1,11 @@
 <div align="center">
 
+<video src="https://github.com/yackov43/phone-media-recovery-skill/raw/main/assets/phone-media-recovery-explainer.mp4" controls width="100%" poster="assets/recovery-cover.png">
+  <a href="https://github.com/yackov43/phone-media-recovery-skill/raw/main/assets/phone-media-recovery-explainer.mp4">Watch the 60-second explainer video</a>
+</video>
+
+<br>
+
 <img src="assets/recovery-cover.png" alt="Phone Media Recovery" width="840">
 
 # 📱 Phone Media Recovery · שחזור מדיה מהטלפון
@@ -46,11 +52,6 @@
 <img src="assets/screenshots/03-verify.png" width="800">
 
 </div>
-
-> 🎬 **Watch the 60-second explainer:** [`video/explainer.mp4`](video/explainer.mp4) — English narration (Gemini TTS) · Hebrew subtitles · original instrumental score (Suno). Full source kit in [`video/`](video/).
-> 🎬 **צפה בסרטון ההסברה (דקה):** [`video/explainer.mp4`](video/explainer.mp4) — קריינות אנגלית · כתוביות עברית · פסקול מקורי. ערכת המקור ב-[`video/`](video/).
-
----
 
 <a id="hebrew"></a>
 
