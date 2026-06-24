@@ -29,6 +29,29 @@
 
 ---
 
+## 📸 See it in action · המערכת בפעולה
+
+<div align="center">
+
+**Step 1 · Compare both phones by exact path · השוואת שני הטלפונים לפי נתיב מדויק**
+
+<img src="assets/screenshots/01-compare.png" width="800">
+
+**Step 2 · Verified, filename-safe restore · שחזור מאומת ובטוח-שמות**
+
+<img src="assets/screenshots/02-restore.png" width="800">
+
+**Step 3 · Per-file verification (size · date · MD5) · אימות לכל קובץ**
+
+<img src="assets/screenshots/03-verify.png" width="800">
+
+</div>
+
+> 🎬 A full explainer-video kit (English narration + Hebrew subtitles) lives in [`video/`](video/).
+> 🎬 ערכת סרטון הסברה מלאה (קריינות אנגלית + כתוביות עברית) נמצאת ב-[`video/`](video/).
+
+---
+
 <a id="hebrew"></a>
 
 # 🇮🇱 עברית
