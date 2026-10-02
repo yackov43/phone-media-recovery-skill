@@ -84,11 +84,15 @@ public final class BridgeApi {
     }
 
     public static JSONObject deviceInfo() {
-        return new JSONObject()
-                .put("manufacturer", Build.MANUFACTURER)
-                .put("model", Build.MODEL)
-                .put("device", Build.DEVICE)
-                .put("sdk", Build.VERSION.SDK_INT)
-                .put("release", Build.VERSION.RELEASE);
+        JSONObject o = new JSONObject();
+        try {
+            o.put("manufacturer", Build.MANUFACTURER);
+            o.put("model", Build.MODEL);
+            o.put("device", Build.DEVICE);
+            o.put("sdk", Build.VERSION.SDK_INT);
+            o.put("release", Build.VERSION.RELEASE);
+        } catch (Exception ignored) {
+        }
+        return o;
     }
 }
