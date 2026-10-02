@@ -36,7 +36,10 @@ android {
         }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            def ks = System.getenv("ASB_KEYSTORE")
+            if (ks != null && !ks.isBlank()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
