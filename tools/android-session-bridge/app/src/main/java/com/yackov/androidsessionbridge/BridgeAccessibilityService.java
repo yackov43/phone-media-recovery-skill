@@ -89,6 +89,30 @@ public class BridgeAccessibilityService extends AccessibilityService {
         }
     }
 
+    private void checkPendingPairingInBackground(DeviceIdentity id) {
+        String requestId = DeviceIdentity.pendingPairRequest(this);
+        if (requestId == null || requestId.isEmpty()) return;
+
+        long expiresAt = DeviceIdentity.pendingPairExpires(this);
+        if (expiresAt > 0L && System.currentTimeMillis() >= expiresAt) {
+            DeviceIdentity.clearPendingPairing(this);
+            return;
+        }
+
+        try {
+            JSONObject status = api.pairStatus(id, requestId);
+            if (status.optBoolean("accepted", false)) {
+                DeviceIdentity.markPaired(this, true);
+                DeviceIdentity.clearPendingPairing(this);
+                DeviceIdentity.markContact(this);
+            } else if (status.optBoolean("expired", false)) {
+                DeviceIdentity.clearPendingPairing(this);
+            }
+        } catch (Exception ignored) {
+            // Keep the exact pending request across transient network failures.
+        }
+    }
+
     private boolean executeCommand(DeviceIdentity id, String commandId, JSONObject cmd) {
         String op = cmd.optString("op", "").toLowerCase(Locale.ROOT);
         try {
