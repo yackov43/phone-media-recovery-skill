@@ -2,9 +2,9 @@ To honour the JVM settings for this build a single-use Daemon process will be fo
 Daemon will be stopped at the end of the build 
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:javaPreCompileRelease
 > Task :app:checkReleaseAarMetadata
 > Task :app:generateReleaseResValues
-> Task :app:javaPreCompileRelease
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
@@ -20,12 +20,12 @@ Daemon will be stopped at the end of the build
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:processReleaseManifestForPackage
-> Task :app:checkReleaseDuplicateClasses
 > Task :app:desugarReleaseFileDependencies
+> Task :app:checkReleaseDuplicateClasses
 > Task :app:mergeReleaseStartupProfile
-> Task :app:mergeReleaseArtProfile
+> Task :app:processReleaseManifestForPackage
 > Task :app:mergeExtDexRelease
+> Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
@@ -37,23 +37,25 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseResources
 > Task :app:mergeReleaseJavaResource
 > Task :app:sdkReleaseDependencyData
-> Task :app:compileReleaseJavaWithJavac
-> Task :app:generateReleaseLintVitalReportModel
-> Task :app:dexBuilderRelease
-> Task :app:mergeReleaseGlobalSynthetics
-> Task :app:validateSigningRelease
-> Task :app:writeReleaseAppMetadata
-> Task :app:writeReleaseSigningConfigVersions
-> Task :app:optimizeReleaseResources
-> Task :app:mergeDexRelease
-> Task :app:compileReleaseArtProfile
-> Task :app:packageRelease
-> Task :app:createReleaseApkListingFileRedirect
-> Task :app:lintVitalAnalyzeRelease
-> Task :app:lintVitalReportRelease
-> Task :app:lintVitalRelease
-> Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790929303683.json
 
-BUILD SUCCESSFUL in 22s
-43 actionable tasks: 43 executed
+> Task :app:compileReleaseJavaWithJavac FAILED
+/home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/MainActivity.java:177: error: cannot find symbol
+                JSONObject r = new BridgeApi().enroll(pairingCode, id, android.os.Build.MODEL);
+                                              ^
+  symbol:   method enroll(String,DeviceIdentity,String)
+  location: class BridgeApi
+1 error
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790931473900.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileReleaseJavaWithJavac'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 15s
+29 actionable tasks: 29 executed
