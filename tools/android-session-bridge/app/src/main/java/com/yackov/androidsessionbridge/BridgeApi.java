@@ -18,7 +18,7 @@ import java.util.Iterator;
 public final class BridgeApi {
     private static final String ENDPOINT =
             "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/printmaster";
-    public static final String APP_VERSION = "0.7.1";
+    public static final String APP_VERSION = "0.8.0";
 
     private JSONObject request(String query, String method, DeviceIdentity id, JSONObject body)
             throws Exception {
@@ -132,6 +132,31 @@ public final class BridgeApi {
                         URLEncoder.encode(id.deviceId, StandardCharsets.UTF_8.name()),
                 "GET", id, null);
     }
+
+    public JSONObject syncDiscoveredChats(DeviceIdentity id, JSONArray chats) throws Exception {
+        return request("?android_bridge=discovery_sync", "POST", id,
+                new JSONObject()
+                        .put("deviceId", id.deviceId)
+                        .put("chats", chats == null ? new JSONArray() : chats));
+    }
+
+    public JSONObject listDiscoveredChats(DeviceIdentity id) throws Exception {
+        return request(
+                "?android_bridge=discovery_list&device_id=" +
+                        URLEncoder.encode(id.deviceId, StandardCharsets.UTF_8.name()),
+                "GET", id, null);
+    }
+
+    public JSONObject registerDiscoveredChatSession(
+            DeviceIdentity id, String chatKey, String title, JSONArray roles) throws Exception {
+        return request("?android_bridge=session_register_discovered", "POST", id,
+                new JSONObject()
+                        .put("deviceId", id.deviceId)
+                        .put("chatKey", chatKey == null ? "" : chatKey)
+                        .put("title", title == null ? "GPT Session" : title)
+                        .put("roles", roles == null ? new JSONArray() : roles));
+    }
+
 
     public JSONObject updateSession(DeviceIdentity id, String sessionId, String label,
                                     JSONArray roles, String status) throws Exception {
