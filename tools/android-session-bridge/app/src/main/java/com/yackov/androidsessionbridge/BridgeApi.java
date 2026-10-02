@@ -18,7 +18,7 @@ import java.util.Iterator;
 public final class BridgeApi {
     private static final String ENDPOINT =
             "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/printmaster";
-    public static final String APP_VERSION = "0.5.0";
+    public static final String APP_VERSION = "0.6.0";
 
     private JSONObject request(String query, String method, DeviceIdentity id, JSONObject body)
             throws Exception {
@@ -95,6 +95,11 @@ public final class BridgeApi {
                         .put("deviceId", id.deviceId)
                         .put("roles", roles == null ? new JSONArray() : roles));
     }
+
+    public JSONObject getAgentRegistry(DeviceIdentity id) throws Exception {
+        return request("?android_bridge=agent_registry", "GET", id, null);
+    }
+
 
     public JSONObject requestAgentRun(DeviceIdentity id, JSONArray roles) throws Exception {
         return request("?android_bridge=agent_run_request", "POST", id,
