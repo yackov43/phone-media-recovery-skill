@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
     private TextView sessionsStatus;
     private JSONArray agentRegistryCache = new JSONArray();
     private JSONArray sessionsCache = new JSONArray();
+    private JSONArray discoveredChatsCache = new JSONArray();
     private TextView connectionTitle;
     private TextView connectionDetails;
     private TextView technicalStatus;
@@ -468,6 +469,7 @@ public class MainActivity extends Activity {
                 if (!response.optBoolean("ok", false) || chats == null) {
                     throw new IllegalStateException(response.optString("error", "discovery_list_failed"));
                 }
+                discoveredChatsCache = chats;
                 runOnUiThread(() -> renderUnifiedSessions(chats));
             } catch (Exception e) {
                 runOnUiThread(() -> {
@@ -658,6 +660,21 @@ public class MainActivity extends Activity {
     private void generateSessionPairCode(JSONObject chat, JSONObject existingSession) {
         String chatKey = chat.optString("chat_key", "");
         String title = chat.optString("title", "GPT Session");
+
+        int sameTitleCount = 0;
+        for (int i = 0; i < discoveredChatsCache.length(); i++) {
+            JSONObject candidate = discoveredChatsCache.optJSONObject(i);
+            if (candidate != null && title.equals(candidate.optString("title", ""))) {
+                sameTitleCount++;
+            }
+        }
+        if (sameTitleCount > 1) {
+            sessionsStatus.setText(
+                    "יש כמה שיחות בשם „" + title +
+                            "”. כדי למנוע התנגשות, פתח את השיחה הרצויה ב־ChatGPT וחבר אותה דרך Current Session.");
+            sessionsStatus.setTextColor(AMBER);
+            return;
+        }
         if (chatKey.isEmpty()) {
             sessionsStatus.setText("לשיחה הזאת עדיין אין Bridge Chat ID. בצע סריקה מחדש.");
             sessionsStatus.setTextColor(AMBER);
