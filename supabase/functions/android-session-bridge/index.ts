@@ -7,7 +7,7 @@ const SUPABASE_SERVICE_ROLE_KEY=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
 
 const ANDROID_DEFAULT_AGENT_SUITE = [
   "flow_qa","ui_ux","security","performance",
-  "reliability","print_fidelity","regression","mobile_integration"
+  "reliability","artifact_integrity","regression","mobile_integration"
 ];
 
 const ANDROID_AGENT_SKILL_VERSION = "2026-10-02.v2";
@@ -27,7 +27,7 @@ const ANDROID_AGENT_ROLE_GUIDES:Record<string,string> = {
     "ROLE: FLOW QA / END-TO-END ORCHESTRATION.",
     "MISSION: Prove the real user journey works from the first actionable screen to the final artifact. Discover where the flow actually stops, loops, skips a mandatory stage, shows stale state, or reports success too early.",
     "REQUIRED METHOD:",
-    "1. Establish starting state on the real phone and backend: app version, connection state, Accessibility state, active conversation, PrintMaster buildId, pending run and processingId.",
+    "1. Establish starting state on the real phone and backend: app version, connection state, Accessibility state, active conversation, backend/plugin build, pending run and command/run identifiers.",
     "2. Walk the primary happy path one transition at a time. For the active target workflow: identify its real start state, every mandatory transition, the final success condition, and all user-visible handoffs. When the target is PrintMaster, additionally validate its source-to-verified-PNG stages.",
     "3. At each transition verify both sides when possible: visible UI plus backend/log/tool state. A visible spinner without the matching backend stage is not progress.",
     "4. Validate state-machine invariants: no skipped prerequisite; same processingId through the run; correct sourceFileId/resultFileId; no duplicate follow-up or duplicate processing turn.",
@@ -82,14 +82,14 @@ const ANDROID_AGENT_ROLE_GUIDES:Record<string,string> = {
     "5. Inspect bitmap/base64 duplication, large JSON/string creation and memory-heavy full-resolution paths.",
     "6. Review database/function hot queries, indexes, stale cleanup and log volume.",
     "7. Ensure splash/animations/state timers are lightweight and do not trigger expensive work every frame.",
-    "8. PrintMaster native image work must not be proxied through the Android bridge.",
+    "8. Specialized app-native work must not be unnecessarily proxied through the Android bridge.",
     "PASS STANDARD: interactive control, no flood/loop, expensive payloads only on demand.",
     "OUTPUT EMPHASIS: measured/configured values, bottleneck, impact and smallest evidence-based improvement."
   ].join("\n"),
 
   reliability: [
     "ROLE: RELIABILITY / RECOVERY AGENT.",
-    "MISSION: Ensure bridge and PrintMaster recover predictably and never leave false-connected, stale-processing or duplicate-command state.",
+    "MISSION: Ensure the bridge and active workflow recover predictably and never leave false-connected, stale-processing or duplicate-command state.",
     "SCENARIOS:",
     "1. Background/reopen Bridge UI; Accessibility service should continue and reopened UI should reflect server reality.",
     "2. Disable/enable Accessibility; verify onboarding/recovery, polling restart and no duplicate workers.",
@@ -97,26 +97,24 @@ const ANDROID_AGENT_ROLE_GUIDES:Record<string,string> = {
     "4. Pairing expiry/retry; new code must not be confused with previous request and exact requestId remains authoritative.",
     "5. Command lifecycle pending → running/claimed → done/error/expired; stale commands expire; async screenshot cannot leave worker permanently busy.",
     "6. Disconnect/reconnect reliably stops and restores control without reinstall.",
-    "7. PrintMaster FOLLOWUP_SENT without GPT_PROCESSING must fail visibly after watchdog; retry must not reuse stale/poisoned processingId.",
+    "7. A dispatched action without confirmed execution must fail visibly after its watchdog; retry must not reuse stale or poisoned run state.",
     "8. Sensitive foreground states such as calls/authentication should BLOCK automation rather than receive taps.",
     "FAIL CONDITIONS: false connected indicator, stuck busy flag, duplicate polling workers, stale command execution, silent timeout or reinstall required for normal recovery.",
     "OUTPUT EMPHASIS: recovery time, required user action and truthfulness of state throughout."
   ].join("\n"),
 
-  print_fidelity: [
-    "ROLE: PRINT FIDELITY / OUTPUT INTEGRITY AGENT.",
-    "MISSION: Prove PrintMaster returns a real edited image faithful to the user's source and a real downloadable print file at exact requested pixels and DPI.",
+  artifact_integrity: [
+    "ROLE: ARTIFACT INTEGRITY AGENT.",
+    "MISSION: Verify files, images, attachments and generated artifacts remain the correct objects from source to final result.",
     "CHECKS:",
-    "1. Source identity: bound source belongs to processingId; no substitute image or wrong attachment.",
-    "2. Edit fidelity: preserve identity, face, composition, recognizable objects, legible text/logos, color intent and lighting character. Improve blur/noise/JPEG artifacts and micro-detail without redesign/invention.",
-    "3. Fit: contain keeps whole source; cover crops minimally protecting faces/text/logos; extend expands canvas consistently.",
-    "4. Geometry: recompute target pixels from physical size/DPI. 10×10 cm at 300 DPI must be 1181×1181. Orientation/target stays exact.",
-    "5. Native processing: GPT_PROCESSING then host-native image edit on bound source; MCP/plugin does not pretend to render.",
-    "6. Final file: valid PNG, actual raster exact, size > 0, DPI metadata/pHYs matches selected DPI within encoding tolerance, no thumbnail substitute, expected filename.",
-    "7. Delivery: preview matches verified file; full-resolution download enabled; before/after coherent.",
-    "8. Completion: 75 RESULT_RECEIVED, 85 PNG_ENCODING, 95 PNG_VERIFIED, 100 READY only after file checks.",
-    "FAIL CONDITIONS: wrong raster/source, invented content, missing DPI, corrupt PNG, preview-only result, disabled download, stale processingId or premature 100%.",
-    "OUTPUT EMPHASIS: exact pixels/DPI/file validity and visual fidelity grounded in source/result evidence."
+    "1. Confirm source identity and exact session association.",
+    "2. Verify file type, filename, size and metadata when available.",
+    "3. Detect thumbnail, placeholder, stale attachment or wrong-session substitution.",
+    "4. Confirm final artifact opens/decodes successfully and is downloadable when delivery is expected.",
+    "5. Compare preview and final artifact for identity/consistency.",
+    "6. Apply task-specific integrity rules only when the active workflow requires them.",
+    "PASS requires objective artifact evidence. If evidence is unavailable, mark NOT TESTED rather than assuming success.",
+    "OUTPUT EMPHASIS: exact source/result evidence, integrity failure point and smallest remediation."
   ].join("\n"),
 
   regression: [
@@ -145,7 +143,7 @@ const ANDROID_AGENT_ROLE_GUIDES:Record<string,string> = {
     "3. Disconnect/reconnect from app works without reinstall.",
     "4. Accessibility automation: composer detection, text insertion, send-button detection, tap/swipe, UI tree/global actions with keyboard/RTL states.",
     "5. App switching Bridge ↔ ChatGPT ↔ picker/system settings preserves intent and does not target wrong app/screen.",
-    "6. Photo picker/upload: distinguish ChatGPT picker failure from PrintMaster widget failure and verify return to correct conversation.",
+    "6. Photo picker/upload: distinguish ChatGPT picker failure from the active app/workflow failure and verify return to the correct conversation.",
     "7. Sensitive foreground policy: calls/video calls, authentication/payments or personal screens cause BLOCKED, not disruptive actions.",
     "8. Samsung constraints: sideload restricted settings, Accessibility lifecycle, background process survival, permission revocation and package visibility.",
     "9. Evidence must come from actual SM-S908E screenshots/UI tree, not desktop/browser emulation.",
@@ -236,7 +234,7 @@ function fallbackAndroidAgentRegistry() {
     security:{title:"Security",description:"Pairing, authorization, privacy and attack-surface review.",sort_order:30},
     performance:{title:"Performance",description:"Latency, polling, battery, memory and backend efficiency.",sort_order:40},
     reliability:{title:"Reliability",description:"Timeout, retry, reconnect and recovery validation.",sort_order:50},
-    print_fidelity:{title:"Print Fidelity",description:"Source fidelity, fit, exact pixels, DPI and final PNG integrity.",sort_order:60},
+    artifact_integrity:{title:"Artifact Integrity",description:"Files, images, attachments, metadata and final-artifact integrity.",sort_order:60},
     regression:{title:"Regression",description:"Known-bug and canonical-invariant regression testing.",sort_order:70},
     mobile_integration:{title:"Mobile Integration",description:"ChatGPT Android, Accessibility and real-device integration.",sort_order:80}
   };
