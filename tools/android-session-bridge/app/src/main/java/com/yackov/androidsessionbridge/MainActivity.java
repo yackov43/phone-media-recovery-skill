@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout sessionCard;
     private LinearLayout codeArea;
+    private LinearLayout agentRowsContainer;
     private TextView connectionTitle;
     private TextView connectionDetails;
     private TextView technicalStatus;
@@ -140,6 +141,7 @@ public class MainActivity extends Activity {
 
         setContentView(scroll);
         refreshConnectionUi();
+        loadAgentRegistry();
 
         root.animate()
                 .alpha(1f)
@@ -283,42 +285,20 @@ public class MainActivity extends Activity {
 
         card.addView(label("GPT Mini‑Agent Crew", 20, TEXT, true), matchWrap());
         TextView p = label(
-                "אלה לא מודלים חיצוניים. אותו GPT של הסשן שלך מריץ כמה passes עצמאיים — " +
-                "כל pass מקבל תפקיד, צ'קליסט ודוח נפרד. בחר מי משתתף בסבב.",
+                "רשימת הסוכנים וה־Skills נטענת דינמית מה־Skill Registry בשרת. " +
+                "אותו GPT של הסשן מריץ כל Agent כ־pass נפרד עם Prompt וצ'קליסט משלו.",
                 13, MUTED, false);
         p.setLineSpacing(0f, 1.2f);
         LinearLayout.LayoutParams pLp = matchWrap();
         pLp.setMargins(0, dp(8), 0, dp(10));
         card.addView(p, pLp);
 
-        Set<String> saved = getPreferences(MODE_PRIVATE)
-                .getStringSet("agent_roles", new HashSet<>(Arrays.asList(AGENT_IDS)));
-
-        for (int i = 0; i < AGENT_IDS.length; i++) {
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(dp(10), dp(9), dp(10), dp(9));
-            row.setBackground(rounded(CARD_ALT, 12, Color.rgb(35, 53, 80)));
-
-            CheckBox cb = new CheckBox(this);
-            cb.setText(AGENT_TITLES[i]);
-            cb.setTextColor(TEXT);
-            cb.setTextSize(15);
-            cb.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            cb.setChecked(saved.contains(AGENT_IDS[i]));
-            cb.setTag(AGENT_IDS[i]);
-            row.addView(cb, matchWrap());
-            agentChecks.add(cb);
-
-            TextView desc = label(AGENT_DESCRIPTIONS[i], 12, MUTED, false);
-            LinearLayout.LayoutParams descLp = matchWrap();
-            descLp.setMargins(dp(34), 0, dp(34), 0);
-            row.addView(desc, descLp);
-
-            LinearLayout.LayoutParams rowLp = matchWrap();
-            rowLp.setMargins(0, dp(6), 0, 0);
-            card.addView(row, rowLp);
-        }
+        agentRowsContainer = new LinearLayout(this);
+        agentRowsContainer.setOrientation(LinearLayout.VERTICAL);
+        TextView loading = label("טוען Skill Registry…", 13, MUTED, false);
+        loading.setGravity(Gravity.CENTER);
+        agentRowsContainer.addView(loading, matchWrap());
+        card.addView(agentRowsContainer, matchWrap());
 
         Button save = actionButton("שמור צוות סוכנים", false);
         save.setOnClickListener(v -> saveAgentSuite(false));
@@ -332,12 +312,119 @@ public class MainActivity extends Activity {
         rLp.setMargins(0, dp(8), 0, 0);
         card.addView(run, rLp);
 
-        agentStatus = label("הסוכנים משתמשים באותו GPT ובאותו חיבור של הסשן.", 12, MUTED, false);
+        agentStatus = label("ה־Registry מתעדכן מהשרת בלי צורך ב־APK חדש.", 12, MUTED, false);
         agentStatus.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams aLp = matchWrap();
         aLp.setMargins(0, dp(10), 0, 0);
         card.addView(agentStatus, aLp);
         return card;
+    }
+
+    private void loadAgentRegistry() {
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        io.execute(() -> {
+            try {
+                JSONObject response = api.getAgentRegistry(id);
+                if (!response.optBoolean("ok", false)) {
+                    throw new IllegalStateException(response.optString("error", "registry_failed"));
+                }
+                JSONArray agents = response.optJSONArray("agents");
+                if (agents == null || agents.length() == 0) {
+                    throw new IllegalStateException("registry_empty");
+                }
+                runOnUiThread(() -> renderAgentRegistry(agents, false));
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    renderAgentRegistry(fallbackAgentRegistry(), true);
+                    agentStatus.setText("לא ניתן היה לטעון Registry חי; מוצגת רשימת fallback מקומית.");
+                    agentStatus.setTextColor(AMBER);
+                });
+            }
+        });
+    }
+
+    private void renderAgentRegistry(JSONArray agents, boolean fallback) {
+        if (agentRowsContainer == null) return;
+        agentRowsContainer.removeAllViews();
+        agentChecks.clear();
+
+        Set<String> persisted = getPreferences(MODE_PRIVATE).getStringSet("agent_roles", null);
+        Set<String> saved = persisted == null ? null : new HashSet<>(persisted);
+
+        for (int i = 0; i < agents.length(); i++) {
+            JSONObject agent = agents.optJSONObject(i);
+            if (agent == null || !agent.optBoolean("enabled", true)) continue;
+
+            String agentId = agent.optString("agentId", "").trim();
+            if (agentId.isEmpty()) continue;
+
+            String title = agent.optString("title", agentId);
+            String description = agent.optString("description", "");
+            String skillVersion = agent.optString("skillVersion", "");
+            int checklistCount = agent.optInt("checklistCount", 0);
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(10), dp(9), dp(10), dp(9));
+            row.setBackground(rounded(CARD_ALT, 12, Color.rgb(35, 53, 80)));
+
+            CheckBox cb = new CheckBox(this);
+            cb.setText(title);
+            cb.setTextColor(TEXT);
+            cb.setTextSize(15);
+            cb.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            cb.setChecked(saved == null || saved.contains(agentId));
+            cb.setTag(agentId);
+            row.addView(cb, matchWrap());
+            agentChecks.add(cb);
+
+            TextView desc = label(description, 12, MUTED, false);
+            LinearLayout.LayoutParams descLp = matchWrap();
+            descLp.setMargins(dp(34), 0, dp(34), 0);
+            row.addView(desc, descLp);
+
+            String meta = "Skill " + (skillVersion.isEmpty() ? "server" : skillVersion);
+            if (checklistCount > 0) meta += " · " + checklistCount + " checks";
+            TextView version = label(meta, 11, TEAL, false);
+            LinearLayout.LayoutParams verLp = matchWrap();
+            verLp.setMargins(dp(34), dp(5), dp(34), 0);
+            row.addView(version, verLp);
+
+            LinearLayout.LayoutParams rowLp = matchWrap();
+            rowLp.setMargins(0, dp(6), 0, 0);
+            agentRowsContainer.addView(row, rowLp);
+        }
+
+        if (agentChecks.isEmpty()) {
+            TextView empty = label("אין כרגע Mini‑Agents פעילים ב־Registry.", 13, AMBER, false);
+            empty.setGravity(Gravity.CENTER);
+            agentRowsContainer.addView(empty, matchWrap());
+        } else {
+            agentStatus.setText(
+                    fallback
+                            ? "מצב fallback מקומי · " + agentChecks.size() + " סוכנים"
+                            : "✓ Skill Registry חי · " + agentChecks.size() + " סוכנים פעילים");
+            agentStatus.setTextColor(fallback ? AMBER : GREEN);
+        }
+        showWithAnimation(agentRowsContainer);
+    }
+
+    private JSONArray fallbackAgentRegistry() {
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < AGENT_IDS.length; i++) {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("agentId", AGENT_IDS[i]);
+                o.put("title", AGENT_TITLES[i]);
+                o.put("description", AGENT_DESCRIPTIONS[i]);
+                o.put("enabled", true);
+                o.put("skillVersion", "fallback");
+                o.put("checklistCount", 0);
+                out.put(o);
+            } catch (Exception ignored) {
+            }
+        }
+        return out;
     }
 
     private void generatePairCode() {
