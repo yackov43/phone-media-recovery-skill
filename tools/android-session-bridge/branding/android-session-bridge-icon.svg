@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Android Session Bridge">
+  <rect width="512" height="512" rx="112" fill="#0B1220"/>
+  <rect x="82" y="142" width="118" height="228" rx="30" fill="#14B8A6"/>
+  <rect x="312" y="142" width="118" height="228" rx="30" fill="#38BDF8"/>
+  <rect x="102" y="166" width="78" height="154" rx="18" fill="#0B1220"/>
+  <rect x="332" y="166" width="78" height="154" rx="18" fill="#0B1220"/>
+  <path d="M160 286 C205 220 307 220 352 286" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round"/>
+  <path d="M256 203 L279 226 L256 249 L233 226 Z" fill="#F8FAFC"/>
+  <circle cx="141" cy="343" r="10" fill="#F8FAFC"/>
+  <circle cx="371" cy="343" r="10" fill="#F8FAFC"/>
+</svg>
