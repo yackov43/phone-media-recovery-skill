@@ -3,16 +3,16 @@ Daemon will be stopped at the end of the build
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preReleaseBuild UP-TO-DATE
 > Task :app:javaPreCompileRelease
-> Task :app:checkReleaseAarMetadata
 > Task :app:generateReleaseResValues
+> Task :app:checkReleaseAarMetadata
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
-> Task :app:mergeReleaseResources
 > Task :app:packageReleaseResources
+> Task :app:mergeReleaseResources
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease
-> Task :app:processReleaseMainManifest
 > Task :app:parseReleaseLocalResources
+> Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
 > Task :app:mergeReleaseJniLibFolders
@@ -23,51 +23,41 @@ Daemon will be stopped at the end of the build
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:desugarReleaseFileDependencies
 > Task :app:mergeReleaseStartupProfile
-> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseArtProfile
-> Task :app:mergeExtDexRelease
 > Task :app:mergeReleaseShaders
+> Task :app:mergeExtDexRelease
 > Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:processReleaseManifestForPackage
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseAssets
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:collectReleaseDependencies
-> Task :app:processReleaseResources
 > Task :app:mergeReleaseJavaResource
+> Task :app:processReleaseResources
 > Task :app:sdkReleaseDependencyData
 
-> Task :app:compileReleaseJavaWithJavac FAILED
-/home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/MainActivity.java:404: error: cannot find symbol
-        BridgeAccessibilityService.queueChatGptMessage(this, message);
-                                  ^
-  symbol:   method queueChatGptMessage(MainActivity,String)
-  location: class BridgeAccessibilityService
-/home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/MainActivity.java:539: error: cannot find symbol
-                BridgeAccessibilityService.queueChatGptMessage(this, message);
-                                          ^
-  symbol:   method queueChatGptMessage(MainActivity,String)
-  location: class BridgeAccessibilityService
-/home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/MainActivity.java:664: error: cannot find symbol
-            Intent details = new Intent(Settings.ACTION_ACCESSIBILITY_DETAILS_SETTINGS);
-                                                ^
-  symbol:   variable ACTION_ACCESSIBILITY_DETAILS_SETTINGS
-  location: class Settings
-Note: /home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/MainActivity.java uses or overrides a deprecated API.
+> Task :app:compileReleaseJavaWithJavac
+Note: Some input files use or override a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
-3 errors
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790934750136.json
 
-FAILURE: Build failed with an exception.
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:dexBuilderRelease
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:optimizeReleaseResources
+> Task :app:mergeDexRelease
+> Task :app:compileReleaseArtProfile
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:assembleRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790934879639.json
 
-* What went wrong:
-Execution failed for task ':app:compileReleaseJavaWithJavac'.
-> Compilation failed; see the compiler error output for details.
-
-* Try:
-> Run with --info option to get more log output.
-> Run with --scan to get full insights.
-
-BUILD FAILED in 13s
-29 actionable tasks: 29 executed
+BUILD SUCCESSFUL in 14s
+43 actionable tasks: 43 executed
