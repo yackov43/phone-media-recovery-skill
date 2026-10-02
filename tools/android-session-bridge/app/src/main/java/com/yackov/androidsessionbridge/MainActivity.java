@@ -476,24 +476,17 @@ public class MainActivity extends Activity {
     }
 
     private void showSessionPairDialog(String labelText, String requestId, String code) {
-        String message = "קוד: " + formatPairCode(code) +
-                "\n\nהקוד יחבר את שיחת ChatGPT הפעילה לערוץ „" + labelText + "”.";
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("קוד Session מוכן")
-                .setMessage(message)
-                .setPositiveButton("שלח לסשן הפעיל", (d, which) -> {
-                    String text = "חבר את הסשן הזה ל-Android Session Bridge עם הקוד " + code;
-                    BridgeAccessibilityService.queueChatGptMessage(this, text);
-                    Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
-                    if (intent != null) {
-                        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(intent);
-                    }
-                    watchSessionPairing(requestId);
-                })
-                .setNegativeButton("סגור", null)
-                .create();
-        dialog.show();
+        // Legacy compatibility only. We no longer inject pairing codes into ChatGPT.
+        // Session association is moving to silent ChatGPT-session discovery/registry.
+        new AlertDialog.Builder(this)
+                .setTitle("Session ממתין לזיהוי")
+                .setMessage(
+                        "הקוד הישן לא יישלח יותר לתוך השיחה. " +
+                        "האפליקציה תזהה את שיחות ChatGPT ותשייך את הערוץ מאחורי הקלעים.")
+                .setPositiveButton("אישור", null)
+                .show();
+        sessionsStatus.setText("מנגנון Pair-by-message בוטל. מחבר Session דרך Discovery.");
+        sessionsStatus.setTextColor(TEAL);
     }
 
     private void watchSessionPairing(String requestId) {
@@ -845,31 +838,48 @@ public class MainActivity extends Activity {
     }
 
     private void connectToChatGptSession() {
-        if (activePairCode == null || activePairCode.isEmpty()) {
+        if (activePairRequestId == null || activePairRequestId.isEmpty()) {
             generatePairCode();
             return;
         }
-        if (!isAccessibilityEnabled()) {
-            showAccessibilityOnboarding(false);
-            return;
-        }
 
-        String message = "חבר את Android Session Bridge עם הקוד " + activePairCode;
-        BridgeAccessibilityService.queueChatGptMessage(this, message);
-
-        connectionTitle.setText("מתחבר לסשן…");
+        connectionTitle.setText("מתחבר…");
         connectionTitle.setTextColor(BLUE);
-        connectionDetails.setText("פותח את ChatGPT ושולח את קוד החיבור לסשן הפעיל.");
+        connectionDetails.setText("מאשר את החיבור ישירות מול השרת. אין הודעת קוד בתוך ChatGPT.");
         connectButton.setEnabled(false);
 
-        Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
-        if (intent == null) {
-            connectButton.setEnabled(true);
-            connectionDetails.setText("ChatGPT לא נמצא במכשיר.");
-            return;
-        }
-        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        io.execute(() -> {
+            try {
+                JSONObject result = api.completePairing(id, activePairRequestId);
+                if (!result.optBoolean("ok", false) || !result.optBoolean("paired", false)) {
+                    throw new IllegalStateException(result.optString("error", "pair_complete_failed"));
+                }
+
+                DeviceIdentity.markPaired(this, true);
+                DeviceIdentity.clearPendingPairing(this);
+                activePairCode = null;
+                activePairRequestId = null;
+                activePairExpiresAt = 0L;
+
+                runOnUiThread(() -> {
+                    pairCode.setText("✓ CONNECTED");
+                    pairInstruction.setText("החיבור אושר ישירות. לא נשלחה הודעה לצ'אט.");
+                    connectionTitle.setText("✓ מחובר ומוכן");
+                    connectionTitle.setTextColor(GREEN);
+                    connectButton.setEnabled(true);
+                    refreshConnectionUi();
+                    loadSessions();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    connectionTitle.setText("החיבור נכשל");
+                    connectionTitle.setTextColor(RED);
+                    connectionDetails.setText(safeMessage(e));
+                    connectButton.setEnabled(true);
+                });
+            }
+        });
     }
 
     private void verifyServerPairing() {
