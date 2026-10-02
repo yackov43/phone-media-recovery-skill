@@ -20,8 +20,8 @@ Daemon will be stopped at the end of the build
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:desugarReleaseFileDependencies
 > Task :app:checkReleaseDuplicateClasses
+> Task :app:desugarReleaseFileDependencies
 > Task :app:mergeReleaseStartupProfile
 > Task :app:processReleaseManifestForPackage
 > Task :app:mergeExtDexRelease
@@ -38,24 +38,26 @@ Daemon will be stopped at the end of the build
 > Task :app:mergeReleaseJavaResource
 > Task :app:sdkReleaseDependencyData
 
-> Task :app:compileReleaseJavaWithJavac FAILED
-/home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/MainActivity.java:177: error: cannot find symbol
-                JSONObject r = new BridgeApi().enroll(pairingCode, id, android.os.Build.MODEL);
-                                              ^
-  symbol:   method enroll(String,DeviceIdentity,String)
-  location: class BridgeApi
-1 error
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790931473900.json
+> Task :app:compileReleaseJavaWithJavac
+Note: /home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/MainActivity.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
 
-FAILURE: Build failed with an exception.
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:dexBuilderRelease
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:optimizeReleaseResources
+> Task :app:mergeDexRelease
+> Task :app:compileReleaseArtProfile
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:assembleRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790931606994.json
 
-* What went wrong:
-Execution failed for task ':app:compileReleaseJavaWithJavac'.
-> Compilation failed; see the compiler error output for details.
-
-* Try:
-> Run with --info option to get more log output.
-> Run with --scan to get full insights.
-
-BUILD FAILED in 15s
-29 actionable tasks: 29 executed
+BUILD SUCCESSFUL in 22s
+43 actionable tasks: 43 executed
