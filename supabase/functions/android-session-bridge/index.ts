@@ -173,14 +173,60 @@ function androidServiceHeaders(extra:Record<string,string> = {}) {
   };
 }
 
-async function loadAndroidAgentRegistry(includeDisabled=false) {
+async function loadAndroidAgentRegistry(deviceId?:string, includeDisabled=false) {
   if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("ANDROID_AGENT_REGISTRY_SERVICE_ROLE_MISSING");
   const enabledFilter = includeDisabled ? "" : "&enabled=eq.true";
-  const url = SUPABASE_URL + "/rest/v1/android_bridge_agent_registry?select=agent_id,title,description,sort_order,enabled,skill_version,system_prompt,checklist,updated_at" + enabledFilter + "&order=sort_order.asc,agent_id.asc";
-  const response = await fetch(url, { headers: androidServiceHeaders({ "Cache-Control":"no-store" }) });
-  if (!response.ok) throw new Error("ANDROID_AGENT_REGISTRY_READ_FAILED:" + response.status + ":" + await response.text());
-  const rows = await response.json();
-  return Array.isArray(rows) ? rows : [];
+
+  if(deviceId){
+    const deviceUrl = SUPABASE_URL +
+      "/rest/v1/android_bridge_device_agent_registry?select=agent_id,title,description,sort_order,enabled,skill_version,system_prompt,checklist,updated_at" +
+      "&device_id=eq." + encodeURIComponent(deviceId) +
+      enabledFilter + "&order=sort_order.asc,agent_id.asc";
+    const deviceResponse=await fetch(deviceUrl,{headers:androidServiceHeaders({"Cache-Control":"no-store"})});
+    if(deviceResponse.ok){
+      const deviceRows=await deviceResponse.json();
+      if(Array.isArray(deviceRows) && deviceRows.length) return deviceRows;
+    }
+  }
+
+  const globalUrl = SUPABASE_URL +
+    "/rest/v1/android_bridge_agent_registry?select=agent_id,title,description,sort_order,enabled,skill_version,system_prompt,checklist,updated_at" +
+    enabledFilter + "&order=sort_order.asc,agent_id.asc";
+  const response=await fetch(globalUrl,{headers:androidServiceHeaders({"Cache-Control":"no-store"})});
+  if(!response.ok) throw new Error("ANDROID_AGENT_REGISTRY_READ_FAILED:"+response.status+":"+await response.text());
+  const rows=await response.json();
+  return Array.isArray(rows)?rows:[];
+}
+
+async function ensureDeviceAgentRegistry(deviceId:string) {
+  if(!deviceId) return;
+  const existing=await fetch(
+    `${SUPABASE_URL}/rest/v1/android_bridge_device_agent_registry?select=agent_id&device_id=eq.${encodeURIComponent(deviceId)}&limit=1`,
+    {headers:androidServiceHeaders({"Cache-Control":"no-store"})}
+  );
+  if(existing.ok){
+    const rows=await existing.json();
+    if(Array.isArray(rows) && rows.length) return;
+  }
+  const templates=await loadAndroidAgentRegistry(undefined,true);
+  if(!templates.length) return;
+  const payload=templates.map((row:any)=>({
+    device_id:deviceId,
+    agent_id:row.agent_id,
+    title:row.title,
+    description:row.description||"",
+    sort_order:Number(row.sort_order||100),
+    enabled:row.enabled!==false,
+    skill_version:row.skill_version,
+    system_prompt:row.system_prompt,
+    checklist:Array.isArray(row.checklist)?row.checklist:[]
+  }));
+  const save=await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_device_agent_registry?on_conflict=device_id,agent_id`,{
+    method:"POST",
+    headers:androidServiceHeaders({Prefer:"resolution=ignore-duplicates,return=minimal"}),
+    body:JSON.stringify(payload)
+  });
+  if(!save.ok) throw new Error("ANDROID_DEVICE_AGENT_BOOTSTRAP_FAILED:"+save.status+":"+await save.text());
 }
 
 function fallbackAndroidAgentRegistry() {
@@ -207,9 +253,9 @@ function fallbackAndroidAgentRegistry() {
   }));
 }
 
-async function getAndroidAgentRegistry(includeDisabled=false) {
+async function getAndroidAgentRegistry(deviceId?:string, includeDisabled=false) {
   try {
-    const rows = await loadAndroidAgentRegistry(includeDisabled);
+    const rows = await loadAndroidAgentRegistry(deviceId, includeDisabled);
     if (rows.length) return rows;
   } catch (error) {
     console.error("ANDROID_AGENT_REGISTRY_FALLBACK", String(error?.message || error));
@@ -291,7 +337,7 @@ async function createAndroidPairingRequest(deviceId:string, token:string, label:
   );
 
   const tokenHash = await sha256Hex(token);
-  const registry = await getAndroidAgentRegistry(false);
+  const registry = await getAndroidAgentRegistry(undefined,false);
   const suite = normalizeAndroidAgentRoles(requestedAgentSuite, registry);
 
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -334,7 +380,7 @@ async function acceptAndroidPairingCode(code:string) {
   const req = Array.isArray(rows) ? rows[0] : null;
   if (!req || req.used_at || !req.expires_at || Date.parse(req.expires_at) <= Date.now()) throw new Error("ANDROID_PAIRING_CODE_EXPIRED_OR_UNKNOWN");
 
-  const registry = await getAndroidAgentRegistry(false);
+  const registry = await getAndroidAgentRegistry(undefined,false);
   const suite = normalizeAndroidAgentRoles(req.requested_agent_suite, registry);
   const deviceUpsert = await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_devices?on_conflict=device_id`, {
     method:"POST",
@@ -350,6 +396,7 @@ async function acceptAndroidPairingCode(code:string) {
     })
   });
   if (!deviceUpsert.ok) throw new Error("ANDROID_PAIRING_DEVICE_UPSERT_FAILED:" + deviceUpsert.status + ":" + await deviceUpsert.text());
+  await ensureDeviceAgentRegistry(String(req.device_id));
 
   await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_pairing_requests?id=eq.${req.id}`, {
     method:"PATCH",
@@ -379,7 +426,8 @@ async function disconnectAndroidDevice(deviceId:string, token:string) {
 
 async function setAndroidAgentSuite(deviceId:string, token:string, roles:any) {
   if (!(await verifyAndroidDevice(deviceId, token))) throw new Error("ANDROID_BRIDGE_UNAUTHORIZED");
-  const registry = await getAndroidAgentRegistry(false);
+  await ensureDeviceAgentRegistry(deviceId);
+  const registry = await getAndroidAgentRegistry(deviceId,false);
   const suite = normalizeAndroidAgentRoles(roles, registry);
   const update = await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_devices?device_id=eq.${encodeURIComponent(deviceId)}`, {
     method:"PATCH",
@@ -401,7 +449,8 @@ async function createAndroidSessionPairingRequest(
   isPrimary=false
 ) {
   if (!(await verifyAndroidDevice(deviceId, token))) throw new Error("ANDROID_BRIDGE_UNAUTHORIZED");
-  const registry=await getAndroidAgentRegistry(false);
+  await ensureDeviceAgentRegistry(deviceId);
+  const registry=await getAndroidAgentRegistry(deviceId,false);
   const suite=normalizeAndroidAgentRoles(requestedAgentSuite,registry);
 
   for(let attempt=0;attempt<8;attempt++){
@@ -455,7 +504,8 @@ async function acceptAndroidSessionPairingCode(code:string, labelOverride?:strin
     throw new Error("ANDROID_SESSION_PAIRING_CODE_EXPIRED_OR_UNKNOWN");
   }
 
-  const registry=await getAndroidAgentRegistry(false);
+  await ensureDeviceAgentRegistry(String(req.device_id));
+  const registry=await getAndroidAgentRegistry(String(req.device_id),false);
   let suite=normalizeAndroidAgentRoles(req.requested_agent_suite,registry);
   let session:any=null;
 
@@ -589,7 +639,8 @@ async function registerDiscoveredChatSession(
   roles:any
 ) {
   if (!(await verifyAndroidDevice(deviceId, token))) throw new Error("ANDROID_BRIDGE_UNAUTHORIZED");
-  const registry=await getAndroidAgentRegistry(false);
+  await ensureDeviceAgentRegistry(deviceId);
+  const registry=await getAndroidAgentRegistry(deviceId,false);
   const suite=normalizeAndroidAgentRoles(roles,registry);
 
   const existingRead=await fetch(
@@ -660,7 +711,8 @@ async function updateAndroidSession(
   const patch:any={updated_at:new Date().toISOString()};
   if(typeof changes.label==="string" && changes.label.trim()) patch.label=changes.label.trim().slice(0,120);
   if(changes.roles!==undefined){
-    const registry=await getAndroidAgentRegistry(false);
+    await ensureDeviceAgentRegistry(deviceId);
+    const registry=await getAndroidAgentRegistry(deviceId,false);
     patch.agent_suite=normalizeAndroidAgentRoles(changes.roles,registry);
   }
   if(changes.status && ["connected","paused","disconnected"].includes(changes.status)){
@@ -886,7 +938,8 @@ function createServer(){
     }
     const device=await readAndroidDeviceById(String(boundSession.device_id));
     if(!device?.enabled) return {isError:true,content:[{type:"text",text:"ANDROID_AGENT_DEVICE_NOT_AVAILABLE"}]};
-    const registry = await getAndroidAgentRegistry(false);
+    await ensureDeviceAgentRegistry(String(device.device_id));
+    const registry = await getAndroidAgentRegistry(String(device.device_id),false);
     const selected = normalizeAndroidAgentRoles(
       Array.isArray(roles) && roles.length ? roles : (boundSession?.agent_suite || device.agent_suite),
       registry
@@ -1039,43 +1092,6 @@ function createServer(){
     return { structuredContent: { mode: "ANDROID_ACTION_RESULT", action, sessionId:sessionId||null, result: row.result || {}, completedAt: row.completed_at || null }, content };
   });
 
-  registerAppTool(server, "select_print_size", {
-    title: "חשב גודל ופיקסלים",
-    description: "Validate output size and calculate exact pixel dimensions. No image is processed by this tool.",
-    inputSchema: {
-      width: z.number().positive().max(32767),
-      height: z.number().positive().max(32767),
-      unit: z.enum(["cm","mm","m","in","px"]),
-      dpi: z.number().int().min(72).max(1200),
-      label: z.string().max(80).optional(),
-      processingId: z.string().min(1).max(64).optional(),
-    },
-    outputSchema: {
-      width: z.number().positive(),
-      height: z.number().positive(),
-      unit: z.enum(["cm","mm","m","in","px"]),
-      dpi: z.number().int(),
-      pixelWidth: z.number().int().positive(),
-      pixelHeight: z.number().int().positive(),
-      label: z.string(),
-      status: z.literal("SIZE_SELECTED"),
-    },
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    _meta: { ui: { visibility: ["app","model"] }, "openai/widgetAccessible": true },
-  }, async ({ width, height, unit, dpi, label, processingId }) => {
-    if (processingId) console.log(`PRINTMASTER_SELECT processingId=${processingId} label=${JSON.stringify(label || "")} dpi=${dpi}`);
-    const toInches = value => unit === "cm" ? value / 2.54 : unit === "mm" ? value / 25.4 : unit === "m" ? value * 100 / 2.54 : unit === "in" ? value : null;
-    const pixelWidth = unit === "px" ? Math.round(width) : Math.round(toInches(width) * dpi);
-    const pixelHeight = unit === "px" ? Math.round(height) : Math.round(toInches(height) * dpi);
-    if (pixelWidth > 32767 || pixelHeight > 32767 || pixelWidth * pixelHeight > 200_000_000) {
-      return { isError: true, content: [{ type: "text", text: "הגודל וה־DPI שנבחרו יוצרים קובץ גדול מדי." }] };
-    }
-    const selection = { width, height, unit, dpi, pixelWidth, pixelHeight, label: label || `${width}×${height} ${unit}`, status: "SIZE_SELECTED" };
-    return {
-      structuredContent: selection,
-      content: [{ type: "text", text: `Selected ${selection.label} at ${dpi} DPI (${pixelWidth} × ${pixelHeight} pixels). Metadata only; no image was processed.` }],
-    };
-  });
 
   return server;
 }
@@ -1134,7 +1150,7 @@ Deno.serve(async(req:Request)=>{
       return new Response(JSON.stringify({ok:false,error:"pair_request_invalid_or_expired"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}});
     }
 
-    const registry=await getAndroidAgentRegistry(false);
+    const registry=await getAndroidAgentRegistry(undefined,false);
     const suite=normalizeAndroidAgentRoles(reqRow.requested_agent_suite,registry);
     const upsert=await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_devices?on_conflict=device_id`,{
       method:"POST",
@@ -1152,6 +1168,7 @@ Deno.serve(async(req:Request)=>{
     if(!upsert.ok){
       return new Response(JSON.stringify({ok:false,error:"device_enable_failed"}),{status:500,headers:{...corsHeaders,"Content-Type":"application/json"}});
     }
+    await ensureDeviceAgentRegistry(deviceId);
     await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_pairing_requests?id=eq.${encodeURIComponent(requestId)}`,{
       method:"PATCH",
       headers:androidServiceHeaders({Prefer:"return=minimal"}),
@@ -1363,7 +1380,13 @@ Deno.serve(async(req:Request)=>{
   }
 
   if(androidBridgeMode==="agent_registry" && req.method==="GET"){
-    const registry=await getAndroidAgentRegistry(false);
+    const deviceId=url.searchParams.get("device_id")||"";
+    const token=req.headers.get(ANDROID_BRIDGE_HEADER)||"";
+    if(!(await verifyAndroidDevice(deviceId,token))){
+      return new Response(JSON.stringify({ok:false,error:"unauthorized"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}});
+    }
+    await ensureDeviceAgentRegistry(deviceId);
+    const registry=await getAndroidAgentRegistry(deviceId,false);
     const publicRows=registry.map(row=>({
       agentId:String(row.agent_id),
       title:String(row.title||row.agent_id),
@@ -1382,7 +1405,8 @@ Deno.serve(async(req:Request)=>{
     const token=req.headers.get(ANDROID_BRIDGE_HEADER)||"";
     const sessionId=body.sessionId?String(body.sessionId):"";
     if(!(await verifyAndroidDevice(deviceId,token))) return new Response(JSON.stringify({ok:false,error:"unauthorized"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}});
-    const registry=await getAndroidAgentRegistry(false);
+    await ensureDeviceAgentRegistry(deviceId);
+    const registry=await getAndroidAgentRegistry(deviceId,false);
 
     let savedSuite:any[]=[];
     if(sessionId){
