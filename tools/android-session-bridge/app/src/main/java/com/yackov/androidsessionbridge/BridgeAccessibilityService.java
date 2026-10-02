@@ -51,6 +51,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
         try {
             JSONObject response = api.poll(id);
             if (!response.optBoolean("ok", false)) return;
+            DeviceIdentity.markContact(this);
             Object commandObj = response.opt("command");
             if (!(commandObj instanceof JSONObject)) return;
 
