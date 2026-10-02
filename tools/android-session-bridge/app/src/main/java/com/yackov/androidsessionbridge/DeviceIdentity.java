@@ -52,4 +52,17 @@ public final class DeviceIdentity {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getLong(KEY_LAST_CONTACT, 0L);
     }
+
+    public static void clearContact(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().remove(KEY_LAST_CONTACT).apply();
+    }
+
+    public static void markDisconnected(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_PAIRED, false)
+                .remove(KEY_LAST_CONTACT)
+                .apply();
+    }
 }
