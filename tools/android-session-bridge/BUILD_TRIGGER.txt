@@ -1,0 +1,2 @@
+Trigger Android Session Bridge APK diagnostic build.
+Probe 4: fixed release signing + embedded vector icon.
