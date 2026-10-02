@@ -661,12 +661,9 @@ public class MainActivity extends Activity {
 
     private void openAccessibilitySettings() {
         try {
-            Intent details = new Intent(Settings.ACTION_ACCESSIBILITY_DETAILS_SETTINGS);
-            details.putExtra("android.provider.extra.EXTRA_COMPONENT_NAME",
-                    new ComponentName(this, BridgeAccessibilityService.class).flattenToString());
-            startActivity(details);
-        } catch (Exception e) {
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
         }
     }
 
