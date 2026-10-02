@@ -1,6 +1,7 @@
 package com.yackov.androidsessionbridge;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
@@ -14,8 +15,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.ImageView;
@@ -57,14 +60,14 @@ public class MainActivity extends Activity {
     };
 
     private static final String[] AGENT_DESCRIPTIONS = {
-            "עובר על כל הזרימה מקצה לקצה ומאתר נקודות עצירה.",
-            "בודק מסכים, כפתורים, שגיאות, נגישות וחוויית שימוש.",
-            "בודק הרשאות, Pairing, סודות, פרטיות ומשטח תקיפה.",
+            "עובר על הזרימה מקצה לקצה ומאתר בדיוק איפה היא נעצרת.",
+            "בודק מסכים, כפתורים, מצבים, נגישות וחוויית שימוש.",
+            "בודק Pairing, הרשאות, פרטיות, סודות ומשטח תקיפה.",
             "בודק latency, polling, שימוש בזיכרון, CPU וסוללה.",
-            "בודק reconnect, timeout, retry והתאוששות מתקלות.",
+            "בודק retry, timeout, reconnect והתאוששות מתקלות.",
             "בודק נאמנות למקור, Fit, פיקסלים, DPI ו־PNG סופי.",
-            "מריץ מחדש תקלות שכבר נפתרו כדי למנוע חזרה לאחור.",
-            "בודק התנהגות ספציפית של ChatGPT ו־Android במכשיר אמיתי."
+            "מריץ מחדש תקלות שכבר תוקנו כדי למנוע חזרה לאחור.",
+            "בודק Android ו־ChatGPT יחד על המכשיר הפיזי."
     };
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -72,16 +75,20 @@ public class MainActivity extends Activity {
     private final BridgeApi api = new BridgeApi();
     private final List<CheckBox> agentChecks = new ArrayList<>();
 
+    private LinearLayout sessionCard;
+    private LinearLayout codeArea;
     private TextView connectionTitle;
     private TextView connectionDetails;
     private TextView technicalStatus;
     private TextView pairCode;
     private TextView pairInstruction;
     private TextView agentStatus;
-    private Button accessibilityButton;
-    private Button disconnectButton;
-    private Button closeButton;
     private Button generateCodeButton;
+    private Button connectButton;
+    private Button newCodeButton;
+    private Button disconnectButton;
+    private Button accessibilityButton;
+    private Button closeButton;
 
     private volatile boolean serverCheckInFlight = false;
     private long lastServerCheckMs = 0L;
@@ -93,11 +100,11 @@ public class MainActivity extends Activity {
         @Override public void run() {
             refreshConnectionUi();
             long now = System.currentTimeMillis();
-            if (now - lastServerCheckMs > 3500L && !serverCheckInFlight) {
+            if (now - lastServerCheckMs > 3000L && !serverCheckInFlight) {
                 lastServerCheckMs = now;
                 verifyServerPairing();
             }
-            handler.postDelayed(this, 1000);
+            handler.postDelayed(this, 1000L);
         }
     };
 
@@ -115,17 +122,16 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(18), dp(18), dp(18), dp(28));
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        root.setAlpha(0f);
         scroll.addView(root, matchWrap());
 
         root.addView(buildHeader());
         root.addView(buildAboutCard(), cardLp());
-        root.addView(buildConnectionCard(), cardLp());
-        root.addView(buildPairingCard(), cardLp());
+        root.addView(buildSessionCard(), cardLp());
         root.addView(buildAgentsCard(), cardLp());
 
-        accessibilityButton = actionButton("פתח הגדרות נגישות", false);
-        accessibilityButton.setOnClickListener(v ->
-                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        accessibilityButton = actionButton("הפעל הרשאת שליטה", false);
+        accessibilityButton.setOnClickListener(v -> showAccessibilityOnboarding(false));
         root.addView(accessibilityButton, actionLp());
 
         closeButton = actionButton("הכול מחובר — אפשר לצאת", true);
@@ -134,6 +140,16 @@ public class MainActivity extends Activity {
 
         setContentView(scroll);
         refreshConnectionUi();
+
+        root.animate()
+                .alpha(1f)
+                .setDuration(420L)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
+
+        handler.postDelayed(() -> {
+            if (!isAccessibilityEnabled()) showAccessibilityOnboarding(true);
+        }, 550L);
     }
 
     private View buildHeader() {
@@ -150,14 +166,13 @@ public class MainActivity extends Activity {
 
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams copyLp =
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         copyLp.setMargins(dp(14), 0, dp(14), 0);
 
-        TextView title = label("Android Session Bridge", 24, TEXT, true);
-        copy.addView(title, matchWrap());
-
-        TextView sub = label("Control Center · v" + BridgeApi.APP_VERSION, 13, MUTED, false);
-        copy.addView(sub, matchWrap());
+        copy.addView(label("Android Session Bridge", 24, TEXT, true), matchWrap());
+        copy.addView(label("Session Control Center · v" + BridgeApi.APP_VERSION, 13, MUTED, false),
+                matchWrap());
         header.addView(copy, copyLp);
 
         TextView live = label("PRIVATE", 11, TEAL, true);
@@ -170,104 +185,106 @@ public class MainActivity extends Activity {
 
     private View buildAboutCard() {
         LinearLayout card = card();
-        TextView h = label("מה האפליקציה עושה?", 19, TEXT, true);
-        card.addView(h, matchWrap());
+        card.addView(label("מה האפליקציה עושה?", 19, TEXT, true), matchWrap());
 
         TextView p = label(
-                "האפליקציה יוצרת ערוץ פרטי ומאושר בין הסשן שלך ב־ChatGPT לבין הטלפון. " +
-                "היא מאפשרת צילום מסך, קריאת UI, לחיצות, הקלדה ובדיקות QA על מכשיר אמיתי — " +
-                "בלי Termux, בלי SSH ובלי tunnel נכנס.",
+                "גשר פרטי בין הסשן שלך ב־ChatGPT לבין הטלפון. " +
+                "הוא מאפשר ל־GPT לבצע QA אמיתי על מכשיר פיזי: צילום מסך, קריאת UI, " +
+                "לחיצות, הקלדה, בדיקות זרימה ואימות תוצאות.",
                 14, MUTED, false);
-        p.setLineSpacing(0f, 1.25f);
+        p.setLineSpacing(0f, 1.24f);
         LinearLayout.LayoutParams pLp = matchWrap();
-        pLp.setMargins(0, dp(10), 0, 0);
+        pLp.setMargins(0, dp(9), 0, 0);
         card.addView(p, pLp);
 
-        TextView note = label("מפתח OpenAI אינו נשמר ב־APK. הסשן המחובר הוא מנוע ה־GPT.", 12, TEAL, false);
+        TextView note = label(
+                "אותו GPT של הסשן מפעיל גם את Mini‑Agents. אין OpenAI API ואין מפתח נוסף בתוך ה־APK.",
+                12, TEAL, false);
         LinearLayout.LayoutParams nLp = matchWrap();
         nLp.setMargins(0, dp(12), 0, 0);
         card.addView(note, nLp);
         return card;
     }
 
-    private View buildConnectionCard() {
-        LinearLayout card = card();
+    private View buildSessionCard() {
+        sessionCard = card();
 
         connectionTitle = label("בודק חיבור…", 24, TEXT, true);
         connectionTitle.setGravity(Gravity.CENTER);
-        card.addView(connectionTitle, matchWrap());
+        sessionCard.addView(connectionTitle, matchWrap());
 
         connectionDetails = label("", 15, MUTED, false);
         connectionDetails.setGravity(Gravity.CENTER);
         connectionDetails.setLineSpacing(0f, 1.2f);
         LinearLayout.LayoutParams dLp = matchWrap();
-        dLp.setMargins(0, dp(9), 0, 0);
-        card.addView(connectionDetails, dLp);
+        dLp.setMargins(0, dp(8), 0, 0);
+        sessionCard.addView(connectionDetails, dLp);
 
         technicalStatus = label("", 12, MUTED, false);
         technicalStatus.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams tLp = matchWrap();
-        tLp.setMargins(0, dp(10), 0, 0);
-        card.addView(technicalStatus, tLp);
+        tLp.setMargins(0, dp(9), 0, dp(8));
+        sessionCard.addView(technicalStatus, tLp);
 
-        disconnectButton = actionButton("התנתק מהמכשיר", false);
-        disconnectButton.setTextColor(Color.rgb(254, 202, 202));
-        disconnectButton.setBackground(rounded(Color.rgb(72, 24, 34), 14, Color.rgb(127, 29, 29)));
-        disconnectButton.setOnClickListener(v -> disconnect());
-        LinearLayout.LayoutParams bLp = matchWrap();
-        bLp.setMargins(0, dp(14), 0, 0);
-        card.addView(disconnectButton, bLp);
-
-        return card;
-    }
-
-    private View buildPairingCard() {
-        LinearLayout card = card();
-
-        card.addView(label("Pairing מתוך האפליקציה", 19, TEXT, true), matchWrap());
-        TextView info = label(
-                "אין צורך לבקש מ־GPT שימציא קוד. לחץ כאן והאפליקציה תקבל קוד חד־פעמי מהשרת. " +
-                "את הקוד הזה מוסרים לסשן שרוצים לחבר.",
-                13, MUTED, false);
-        info.setLineSpacing(0f, 1.2f);
-        LinearLayout.LayoutParams iLp = matchWrap();
-        iLp.setMargins(0, dp(8), 0, dp(12));
-        card.addView(info, iLp);
+        codeArea = new LinearLayout(this);
+        codeArea.setOrientation(LinearLayout.VERTICAL);
+        codeArea.setVisibility(View.GONE);
+        LinearLayout.LayoutParams codeAreaLp = matchWrap();
+        codeAreaLp.setMargins(0, dp(4), 0, 0);
+        sessionCard.addView(codeArea, codeAreaLp);
 
         pairCode = label("— — — — — —", 34, TEXT, true);
         pairCode.setGravity(Gravity.CENTER);
         pairCode.setTextIsSelectable(true);
         pairCode.setLetterSpacing(0.08f);
-        pairCode.setPadding(0, dp(10), 0, dp(8));
-        card.addView(pairCode, matchWrap());
+        pairCode.setPadding(0, dp(8), 0, dp(6));
+        codeArea.addView(pairCode, matchWrap());
 
-        pairInstruction = label("צור קוד כדי לחבר סשן חדש.", 12, MUTED, false);
+        pairInstruction = label("", 12, MUTED, false);
         pairInstruction.setGravity(Gravity.CENTER);
         pairInstruction.setTextIsSelectable(true);
-        card.addView(pairInstruction, matchWrap());
+        codeArea.addView(pairInstruction, matchWrap());
+
+        connectButton = actionButton("התחבר לסשן GPT", true);
+        connectButton.setVisibility(View.GONE);
+        connectButton.setOnClickListener(v -> connectToChatGptSession());
+        LinearLayout.LayoutParams connectLp = matchWrap();
+        connectLp.setMargins(0, dp(14), 0, 0);
+        codeArea.addView(connectButton, connectLp);
+
+        newCodeButton = actionButton("צור קוד חדש", false);
+        newCodeButton.setVisibility(View.GONE);
+        newCodeButton.setOnClickListener(v -> generatePairCode());
+        LinearLayout.LayoutParams newLp = matchWrap();
+        newLp.setMargins(0, dp(8), 0, 0);
+        codeArea.addView(newCodeButton, newLp);
 
         generateCodeButton = actionButton("צור קוד חיבור", true);
         generateCodeButton.setOnClickListener(v -> generatePairCode());
-        LinearLayout.LayoutParams gLp = matchWrap();
-        gLp.setMargins(0, dp(14), 0, 0);
-        card.addView(generateCodeButton, gLp);
+        LinearLayout.LayoutParams genLp = matchWrap();
+        genLp.setMargins(0, dp(12), 0, 0);
+        sessionCard.addView(generateCodeButton, genLp);
 
-        Button copy = actionButton("העתק הוראת חיבור", false);
-        copy.setOnClickListener(v -> copyPairInstruction());
-        LinearLayout.LayoutParams cLp = matchWrap();
-        cLp.setMargins(0, dp(8), 0, 0);
-        card.addView(copy, cLp);
+        disconnectButton = actionButton("התנתק מהסשן", false);
+        disconnectButton.setTextColor(Color.rgb(254, 202, 202));
+        disconnectButton.setBackground(rounded(Color.rgb(72, 24, 34), 14, Color.rgb(127, 29, 29)));
+        addPressAnimation(disconnectButton);
+        disconnectButton.setVisibility(View.GONE);
+        disconnectButton.setOnClickListener(v -> disconnect());
+        LinearLayout.LayoutParams discLp = matchWrap();
+        discLp.setMargins(0, dp(12), 0, 0);
+        sessionCard.addView(disconnectButton, discLp);
 
-        return card;
+        return sessionCard;
     }
 
     private View buildAgentsCard() {
         LinearLayout card = card();
 
-        card.addView(label("GPT Agent Crew", 20, TEXT, true), matchWrap());
+        card.addView(label("GPT Mini‑Agent Crew", 20, TEXT, true), matchWrap());
         TextView p = label(
-                "כל Agent מקבל תפקיד קבוע ומדווח בנפרד. האפליקציה שומרת את ההרכב; " +
-                "הסשן המחובר מבצע את הבדיקות בפועל על המכשיר ועל PrintMaster.",
+                "אלה לא מודלים חיצוניים. אותו GPT של הסשן שלך מריץ כמה passes עצמאיים — " +
+                "כל pass מקבל תפקיד, צ'קליסט ודוח נפרד. בחר מי משתתף בסבב.",
                 13, MUTED, false);
         p.setLineSpacing(0f, 1.2f);
         LinearLayout.LayoutParams pLp = matchWrap();
@@ -309,13 +326,13 @@ public class MainActivity extends Activity {
         sLp.setMargins(0, dp(14), 0, 0);
         card.addView(save, sLp);
 
-        Button run = actionButton("הפעל צוות בדיקות ב־ChatGPT", true);
+        Button run = actionButton("הפעל את ה־Mini‑Agents בסשן הזה", true);
         run.setOnClickListener(v -> saveAgentSuite(true));
         LinearLayout.LayoutParams rLp = matchWrap();
         rLp.setMargins(0, dp(8), 0, 0);
         card.addView(run, rLp);
 
-        agentStatus = label("כל הסוכנים מסומנים כברירת מחדל.", 12, MUTED, false);
+        agentStatus = label("הסוכנים משתמשים באותו GPT ובאותו חיבור של הסשן.", 12, MUTED, false);
         agentStatus.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams aLp = matchWrap();
         aLp.setMargins(0, dp(10), 0, 0);
@@ -325,8 +342,11 @@ public class MainActivity extends Activity {
 
     private void generatePairCode() {
         generateCodeButton.setEnabled(false);
-        pairCode.setText("מייצר…");
-        pairInstruction.setText("יוצר בקשת Pairing מאובטחת…");
+        newCodeButton.setEnabled(false);
+        connectionTitle.setText("יוצר קוד…");
+        connectionTitle.setTextColor(BLUE);
+        connectionDetails.setText("מכין בקשת Pairing חד־פעמית לסשן.");
+
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         JSONArray agents = selectedAgents();
 
@@ -336,45 +356,72 @@ public class MainActivity extends Activity {
                 if (!r.optBoolean("ok", false)) {
                     throw new IllegalStateException(r.optString("error", "pairing_failed"));
                 }
+
                 String code = r.optString("code", "");
                 String requestId = r.optString("requestId", "");
-                String instruction = r.optString("instruction",
-                        "ב־ChatGPT כתוב: חבר את Android Session Bridge עם הקוד " + code);
                 long expiry = parseIsoMillis(r.optString("expiresAt", ""));
+
                 activePairCode = code;
                 activePairRequestId = requestId.isEmpty() ? null : requestId;
                 activePairExpiresAt = expiry > 0 ? expiry : System.currentTimeMillis() + 10 * 60_000L;
-                copyToClipboard("Android Session Bridge", instruction);
 
                 runOnUiThread(() -> {
+                    connectionTitle.setText("קוד מוכן");
+                    connectionTitle.setTextColor(TEAL);
+                    connectionDetails.setText("עכשיו לחץ על „התחבר לסשן GPT”.");
                     pairCode.setText(formatPairCode(code));
-                    pairInstruction.setText(instruction + "\nהקוד הועתק ללוח והוא תקף לכ־10 דקות.");
-                    generateCodeButton.setText("צור קוד חדש");
-                    generateCodeButton.setEnabled(true);
+                    pairInstruction.setText("הקוד תקף לכ־10 דקות. כפתור ההתחברות שולח אותו ישירות לסשן הפעיל.");
+                    generateCodeButton.setVisibility(View.GONE);
+                    codeArea.setVisibility(View.VISIBLE);
+                    connectButton.setVisibility(View.VISIBLE);
+                    newCodeButton.setVisibility(View.VISIBLE);
+                    showWithAnimation(codeArea);
+                    showWithAnimation(connectButton);
+                    newCodeButton.setEnabled(true);
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    pairCode.setText("שגיאה");
-                    pairInstruction.setText(safeMessage(e));
+                    connectionTitle.setText("שגיאת יצירת קוד");
+                    connectionTitle.setTextColor(RED);
+                    connectionDetails.setText(safeMessage(e));
                     generateCodeButton.setEnabled(true);
                 });
             }
         });
     }
 
-    private void copyPairInstruction() {
+    private void connectToChatGptSession() {
         if (activePairCode == null || activePairCode.isEmpty()) {
-            pairInstruction.setText("צור קודם קוד חיבור.");
+            generatePairCode();
             return;
         }
-        String instruction = "ב־ChatGPT כתוב: חבר את Android Session Bridge עם הקוד " + activePairCode;
-        copyToClipboard("Android Session Bridge", instruction);
-        pairInstruction.setText(instruction + "\n✓ הועתק ללוח");
+        if (!isAccessibilityEnabled()) {
+            showAccessibilityOnboarding(false);
+            return;
+        }
+
+        String message = "חבר את Android Session Bridge עם הקוד " + activePairCode;
+        BridgeAccessibilityService.queueChatGptMessage(this, message);
+
+        connectionTitle.setText("מתחבר לסשן…");
+        connectionTitle.setTextColor(BLUE);
+        connectionDetails.setText("פותח את ChatGPT ושולח את קוד החיבור לסשן הפעיל.");
+        connectButton.setEnabled(false);
+
+        Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+        if (intent == null) {
+            connectButton.setEnabled(true);
+            connectionDetails.setText("ChatGPT לא נמצא במכשיר.");
+            return;
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
     }
 
     private void verifyServerPairing() {
         serverCheckInFlight = true;
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+
         io.execute(() -> {
             try {
                 JSONObject r = api.pairStatus(id, activePairRequestId);
@@ -394,9 +441,12 @@ public class MainActivity extends Activity {
                     activePairCode = null;
                     activePairRequestId = null;
                     activePairExpiresAt = 0L;
+                    DeviceIdentity.markPaired(this, true);
                     runOnUiThread(() -> {
                         pairCode.setText("✓ CONNECTED");
-                        pairInstruction.setText("הקוד הספציפי אושר והטלפון מחובר לסשן.");
+                        pairInstruction.setText("הסשן אישר את הקוד והחיבור פעיל.");
+                        connectButton.setEnabled(true);
+                        refreshConnectionUi();
                     });
                 } else if (exactRequestExpired) {
                     activePairCode = null;
@@ -405,10 +455,11 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         pairCode.setText("פג תוקף");
                         pairInstruction.setText("קוד החיבור לא אושר בזמן. צור קוד חדש.");
+                        connectButton.setEnabled(true);
                     });
                 }
             } catch (Exception ignored) {
-                // Keep the local state on transient network errors.
+                // Transient network errors must not erase local pairing state.
             } finally {
                 serverCheckInFlight = false;
                 runOnUiThread(this::refreshConnectionUi);
@@ -419,6 +470,7 @@ public class MainActivity extends Activity {
     private void disconnect() {
         disconnectButton.setEnabled(false);
         connectionTitle.setText("מתנתק…");
+        connectionTitle.setTextColor(BLUE);
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
 
         io.execute(() -> {
@@ -430,7 +482,11 @@ public class MainActivity extends Activity {
                     activePairRequestId = null;
                     activePairExpiresAt = 0L;
                     pairCode.setText("— — — — — —");
-                    pairInstruction.setText("החיבור נותק. צור קוד חדש כדי לחבר סשן.");
+                    pairInstruction.setText("");
+                    codeArea.setVisibility(View.GONE);
+                    disconnectButton.setVisibility(View.GONE);
+                    generateCodeButton.setVisibility(View.VISIBLE);
+                    generateCodeButton.setEnabled(true);
                     refreshConnectionUi();
                 });
             } catch (Exception e) {
@@ -445,7 +501,7 @@ public class MainActivity extends Activity {
     private void saveAgentSuite(boolean requestRun) {
         JSONArray roles = selectedAgents();
         if (roles.length() == 0) {
-            agentStatus.setText("בחר לפחות Agent אחד.");
+            agentStatus.setText("בחר לפחות Mini‑Agent אחד.");
             agentStatus.setTextColor(AMBER);
             return;
         }
@@ -456,12 +512,12 @@ public class MainActivity extends Activity {
 
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         if (!id.paired) {
-            agentStatus.setText("הצוות נשמר מקומית. חבר את הטלפון כדי להפעיל אותו.");
+            agentStatus.setText("הצוות נשמר. חבר קודם את הסשן כדי להפעיל אותו.");
             agentStatus.setTextColor(AMBER);
             return;
         }
 
-        agentStatus.setText(requestRun ? "מכין סבב בדיקות…" : "שומר את צוות הסוכנים…");
+        agentStatus.setText(requestRun ? "פותח סבב Mini‑Agents…" : "שומר את צוות הסוכנים…");
         agentStatus.setTextColor(MUTED);
 
         io.execute(() -> {
@@ -469,7 +525,7 @@ public class MainActivity extends Activity {
                 api.setAgentSuite(id, roles);
                 if (!requestRun) {
                     runOnUiThread(() -> {
-                        agentStatus.setText("✓ צוות הסוכנים נשמר בשרת.");
+                        agentStatus.setText("✓ צוות ה־Mini‑Agents נשמר.");
                         agentStatus.setTextColor(GREEN);
                     });
                     return;
@@ -477,18 +533,23 @@ public class MainActivity extends Activity {
 
                 JSONObject run = api.requestAgentRun(id, roles);
                 String runId = run.optString("runId", "");
-                String command = "הפעל את צוות הבדיקות של Android Session Bridge";
-                copyToClipboard("Agent Crew", command);
+                String message = "הפעל את צוות הבדיקות של Android Session Bridge בסשן הזה" +
+                        (runId.isEmpty() ? "" : " עבור Run " + runId);
+
+                BridgeAccessibilityService.queueChatGptMessage(this, message);
+
                 runOnUiThread(() -> {
-                    agentStatus.setText("✓ נפתחה בקשת Agent Crew" +
-                            (runId.isEmpty() ? "" : " · " + runId.substring(0, Math.min(8, runId.length()))) +
-                            "\nפותח את ChatGPT. הפקודה הועתקה ללוח.");
+                    agentStatus.setText("✓ הסבב נוצר. שולח אותו לאותו GPT בסשן הנוכחי…");
                     agentStatus.setTextColor(GREEN);
-                    openChatGpt();
+                    Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    agentStatus.setText("שגיאת Agent Crew: " + safeMessage(e));
+                    agentStatus.setText("שגיאת Mini‑Agents: " + safeMessage(e));
                     agentStatus.setTextColor(RED);
                 });
             }
@@ -500,10 +561,8 @@ public class MainActivity extends Activity {
         boolean accessibility = isAccessibilityEnabled();
         long lastContact = DeviceIdentity.lastContact(this);
         long age = lastContact == 0L ? Long.MAX_VALUE : System.currentTimeMillis() - lastContact;
-        boolean live = id.paired && accessibility && age < 12_000L;
+        boolean live = id.paired && accessibility && age < 15_000L;
 
-        disconnectButton.setVisibility(id.paired ? View.VISIBLE : View.GONE);
-        disconnectButton.setEnabled(true);
         accessibilityButton.setVisibility(accessibility ? View.GONE : View.VISIBLE);
         closeButton.setVisibility(live ? View.VISIBLE : View.GONE);
 
@@ -515,10 +574,11 @@ public class MainActivity extends Activity {
                 activePairExpiresAt = 0L;
                 pairCode.setText("פג תוקף");
                 pairInstruction.setText("צור קוד חדש.");
+                connectButton.setVisibility(View.GONE);
             } else {
                 pairInstruction.setText(
-                        "ב־ChatGPT כתוב: חבר את Android Session Bridge עם הקוד " + activePairCode +
-                        "\nתוקף: " + (seconds / 60) + ":" + String.format("%02d", seconds % 60));
+                        "הקוד תקף עוד " + (seconds / 60) + ":" + String.format("%02d", seconds % 60) +
+                        ". לחץ „התחבר לסשן GPT”.");
             }
         }
 
@@ -526,26 +586,87 @@ public class MainActivity extends Activity {
             connectionTitle.setText("✓ מחובר ומוכן");
             connectionTitle.setTextColor(GREEN);
             connectionDetails.setText(
-                    "הסשן יכול לבצע בדיקות ושליטה על המכשיר.\n" +
+                    "הסשן יכול לשלוט ולבדוק את המכשיר.\n" +
                     "אפשר לצאת מהאפליקציה — השירות ממשיך לעבוד ברקע.");
             technicalStatus.setText(
                     android.os.Build.MODEL + " · Accessibility פעיל · Heartbeat חי · v" +
                             BridgeApi.APP_VERSION);
+            generateCodeButton.setVisibility(View.GONE);
+            codeArea.setVisibility(View.GONE);
+            disconnectButton.setVisibility(View.VISIBLE);
+            disconnectButton.setEnabled(true);
         } else if (id.paired && accessibility) {
             connectionTitle.setText("מחובר · ממתין ל־heartbeat");
             connectionTitle.setTextColor(BLUE);
             connectionDetails.setText("Pairing ונגישות פעילים. ממתין לקשר הבא מהסשן.");
             technicalStatus.setText("ערוץ השליטה מאושר · Accessibility פעיל");
+            generateCodeButton.setVisibility(View.GONE);
+            codeArea.setVisibility(View.GONE);
+            disconnectButton.setVisibility(View.VISIBLE);
+            disconnectButton.setEnabled(true);
         } else if (id.paired) {
-            connectionTitle.setText("מחובר · חסרה נגישות");
+            connectionTitle.setText("מחובר · צריך הרשאת שליטה");
             connectionTitle.setTextColor(AMBER);
-            connectionDetails.setText("ה־Pairing קיים, אבל צריך להפעיל את שירות הנגישות.");
+            connectionDetails.setText("החיבור קיים. הפעל את Accessibility פעם אחת כדי לאפשר QA ושליטה.");
             technicalStatus.setText("Pairing פעיל · Accessibility כבוי");
+            generateCodeButton.setVisibility(View.GONE);
+            codeArea.setVisibility(View.GONE);
+            disconnectButton.setVisibility(View.VISIBLE);
+            disconnectButton.setEnabled(true);
+        } else if (activePairCode != null) {
+            connectionTitle.setText("קוד מוכן לחיבור");
+            connectionTitle.setTextColor(TEAL);
+            connectionDetails.setText("לחץ על כפתור ההתחברות שמופיע מתחת לקוד.");
+            technicalStatus.setText(accessibility
+                    ? "Accessibility פעיל · מוכן לשלוח את הקוד לסשן"
+                    : "יש להפעיל Accessibility לפני החיבור");
+            generateCodeButton.setVisibility(View.GONE);
+            codeArea.setVisibility(View.VISIBLE);
+            connectButton.setVisibility(View.VISIBLE);
+            newCodeButton.setVisibility(View.VISIBLE);
+            disconnectButton.setVisibility(View.GONE);
         } else {
             connectionTitle.setText("לא מחובר");
             connectionTitle.setTextColor(MUTED);
-            connectionDetails.setText("צור קוד חיבור מתוך האפליקציה וחבר אותו לסשן ChatGPT.");
-            technicalStatus.setText("מזהה המכשיר נשמר מקומית · אין סשן פעיל");
+            connectionDetails.setText("צור קוד חיבור. מיד אחריו יופיע כפתור „התחבר לסשן GPT”.");
+            technicalStatus.setText(accessibility
+                    ? "Accessibility פעיל · מוכן לחיבור"
+                    : "שלב ראשון: הרשאת Accessibility חד־פעמית");
+            codeArea.setVisibility(View.GONE);
+            generateCodeButton.setVisibility(View.VISIBLE);
+            generateCodeButton.setEnabled(true);
+            disconnectButton.setVisibility(View.GONE);
+        }
+    }
+
+    private void showAccessibilityOnboarding(boolean firstLaunch) {
+        if (isAccessibilityEnabled()) return;
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("הרשאת שליטה חד־פעמית")
+                .setMessage(
+                        "כדי שהסשן ו־Mini‑Agents יוכלו לבצע QA אמיתי — צילום מסך, " +
+                        "קריאת מסכים ולחיצות — צריך להפעיל פעם אחת את Android Session Bridge " +
+                        "במסך הנגישות.\n\nAndroid לא מאפשר לאפליקציה לאשר את ההרשאה בעצמה; " +
+                        "אתה מאשר אותה פעם אחת במסך המערכת.")
+                .setPositiveButton("פתח והפעל הרשאה", (d, which) -> openAccessibilitySettings())
+                .setNegativeButton(firstLaunch ? "אחר כך" : "ביטול", null)
+                .create();
+        dialog.setOnShowListener(d -> {
+            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (positive != null) positive.setTextColor(TEAL);
+        });
+        dialog.show();
+    }
+
+    private void openAccessibilitySettings() {
+        try {
+            Intent details = new Intent(Settings.ACTION_ACCESSIBILITY_DETAILS_SETTINGS);
+            details.putExtra("android.provider.extra.EXTRA_COMPONENT_NAME",
+                    new ComponentName(this, BridgeAccessibilityService.class).flattenToString());
+            startActivity(details);
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         }
     }
 
@@ -553,17 +674,6 @@ public class MainActivity extends Activity {
         JSONArray arr = new JSONArray();
         for (CheckBox cb : agentChecks) if (cb.isChecked()) arr.put(String.valueOf(cb.getTag()));
         return arr;
-    }
-
-    private void openChatGpt() {
-        Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
-        if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-            startActivity(intent);
-        } else {
-            agentStatus.setText("ChatGPT לא נמצא במכשיר. בקשת ה־Agent Crew נשמרה בשרת.");
-            agentStatus.setTextColor(AMBER);
-        }
     }
 
     private boolean isAccessibilityEnabled() {
@@ -608,7 +718,32 @@ public class MainActivity extends Activity {
         b.setBackground(primary
                 ? rounded(TEAL, 14, TEAL)
                 : rounded(CARD_ALT, 14, Color.rgb(51, 65, 85)));
+        addPressAnimation(b);
         return b;
+    }
+
+    private void addPressAnimation(View v) {
+        v.setOnTouchListener((view, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                view.animate().scaleX(0.965f).scaleY(0.965f).setDuration(90L).start();
+            } else if (event.getAction() == MotionEvent.ACTION_UP ||
+                    event.getAction() == MotionEvent.ACTION_CANCEL) {
+                view.animate().scaleX(1f).scaleY(1f).setDuration(150L).start();
+            }
+            return false;
+        });
+    }
+
+    private void showWithAnimation(View v) {
+        v.setAlpha(0f);
+        v.setTranslationY(dp(10));
+        v.setVisibility(View.VISIBLE);
+        v.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(260L)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
     }
 
     private LinearLayout.LayoutParams cardLp() {
@@ -644,11 +779,6 @@ public class MainActivity extends Activity {
     private String formatPairCode(String code) {
         if (code == null || code.length() != 6) return code == null ? "" : code;
         return code.substring(0, 3) + "  " + code.substring(3);
-    }
-
-    private void copyToClipboard(String label, String text) {
-        ClipboardManager manager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (manager != null) manager.setPrimaryClip(ClipData.newPlainText(label, text));
     }
 
     private String safeMessage(Exception e) {
