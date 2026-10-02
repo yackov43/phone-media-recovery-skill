@@ -351,13 +351,6 @@ async function acceptAndroidPairingCode(code:string) {
   });
   if (!deviceUpsert.ok) throw new Error("ANDROID_PAIRING_DEVICE_UPSERT_FAILED:" + deviceUpsert.status + ":" + await deviceUpsert.text());
 
-  const control = await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_control_state?on_conflict=id`, {
-    method:"POST",
-    headers: androidServiceHeaders({ Prefer:"resolution=merge-duplicates,return=minimal" }),
-    body: JSON.stringify({ id:1, active_device_id:req.device_id, updated_at:new Date().toISOString() })
-  });
-  if (!control.ok) throw new Error("ANDROID_PAIRING_CONTROL_STATE_FAILED:" + control.status);
-
   await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_pairing_requests?id=eq.${req.id}`, {
     method:"PATCH",
     headers: androidServiceHeaders({ Prefer:"return=minimal" }),
@@ -376,11 +369,6 @@ async function disconnectAndroidDevice(deviceId:string, token:string) {
   });
   if (!disabled.ok) throw new Error("ANDROID_DISCONNECT_FAILED:" + disabled.status);
 
-  await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_control_state?id=eq.1&active_device_id=eq.${encodeURIComponent(deviceId)}`, {
-    method:"PATCH",
-    headers: androidServiceHeaders({ Prefer:"return=minimal" }),
-    body: JSON.stringify({ active_device_id:null, updated_at:new Date().toISOString() })
-  });
   await fetch(`${SUPABASE_URL}/rest/v1/android_bridge_commands?device_id=eq.${encodeURIComponent(deviceId)}&status=in.(pending,running)`, {
     method:"PATCH",
     headers: androidServiceHeaders({ Prefer:"return=minimal" }),
@@ -1345,6 +1333,16 @@ Deno.serve(async(req:Request)=>{
         if(!Array.isArray(runningRows) || !runningRows.length){
           await releaseAndroidSessionLease(sessionId);
         }
+      }
+      if(requestedStatus==="disconnected"){
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/android_bridge_devices?device_id=eq.${encodeURIComponent(deviceId)}&current_session_id=eq.${encodeURIComponent(sessionId)}`,
+          {
+            method:"PATCH",
+            headers:androidServiceHeaders({Prefer:"return=minimal"}),
+            body:JSON.stringify({current_session_id:null,updated_at:new Date().toISOString()})
+          }
+        );
       }
       return new Response(JSON.stringify({ok:true,session}),{status:200,headers:{...corsHeaders,"Content-Type":"application/json"}});
     }catch(error){
