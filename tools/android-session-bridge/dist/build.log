@@ -2,9 +2,9 @@ To honour the JVM settings for this build a single-use Daemon process will be fo
 Daemon will be stopped at the end of the build 
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:checkReleaseAarMetadata
 > Task :app:javaPreCompileRelease
 > Task :app:generateReleaseResValues
-> Task :app:checkReleaseAarMetadata
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
@@ -16,23 +16,27 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
 > Task :app:mergeReleaseJniLibFolders
-> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseNativeLibs NO-SOURCE
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:processReleaseManifestForPackage
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:desugarReleaseFileDependencies
 > Task :app:mergeReleaseStartupProfile
 > Task :app:mergeReleaseArtProfile
-> Task :app:mergeExtDexRelease
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeExtDexRelease
 > Task :app:mergeReleaseAssets
 > Task :app:compressReleaseAssets
-> Task :app:processReleaseResources
 > Task :app:extractReleaseVersionControlInfo
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:collectReleaseDependencies
+> Task :app:processReleaseResources
+> Task :app:mergeReleaseJavaResource
+> Task :app:sdkReleaseDependencyData
 
 > Task :app:compileReleaseJavaWithJavac
 Note: Some input files use or override a deprecated API.
@@ -40,16 +44,12 @@ Note: Recompile with -Xlint:deprecation for details.
 
 > Task :app:generateReleaseLintVitalReportModel
 > Task :app:dexBuilderRelease
-> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseGlobalSynthetics
-> Task :app:mergeReleaseJavaResource
-> Task :app:collectReleaseDependencies
-> Task :app:optimizeReleaseResources
-> Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
-> Task :app:mergeDexRelease
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:optimizeReleaseResources
+> Task :app:mergeDexRelease
 > Task :app:compileReleaseArtProfile
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
@@ -57,7 +57,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:lintVitalReportRelease
 > Task :app:lintVitalRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790940258376.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790942656244.json
 
-BUILD SUCCESSFUL in 24s
+BUILD SUCCESSFUL in 21s
 43 actionable tasks: 43 executed
