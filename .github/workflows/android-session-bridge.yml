@@ -41,45 +41,70 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Build and publish APK/status into repository
+      - name: Build signed release APK
         shell: bash
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
-          set +e
+          set -euo pipefail
           cd tools/android-session-bridge
           mkdir -p dist
-          rm -f dist/android-session-bridge-debug.apk dist/build.log dist/build-status.json
-          gradle --no-daemon :app:assembleDebug > >(tee dist/build.log) 2>&1
+          rm -f dist/Android-Session-Bridge-0.2.0-release.apk dist/build.log dist/build-status.json dist/signature.txt
+
+          STORE_PASS="$(openssl rand -hex 24)"
+          KEY_PASS="$(openssl rand -hex 24)"
+          KEYSTORE="$RUNNER_TEMP/android-session-bridge-release.jks"
+          echo "::add-mask::$STORE_PASS"
+          echo "::add-mask::$KEY_PASS"
+
+          keytool -genkeypair -v             -keystore "$KEYSTORE"             -storepass "$STORE_PASS"             -keypass "$KEY_PASS"             -alias android-session-bridge             -keyalg RSA -keysize 3072 -validity 3650             -dname "CN=Android Session Bridge, OU=Private QA, O=Yackov43, C=IL"
+
+          export ASB_KEYSTORE="$KEYSTORE"
+          export ASB_STORE_PASSWORD="$STORE_PASS"
+          export ASB_KEY_ALIAS="android-session-bridge"
+          export ASB_KEY_PASSWORD="$KEY_PASS"
+
+          set +e
+          gradle --no-daemon :app:assembleRelease > >(tee dist/build.log) 2>&1
           BUILD_EXIT=$?
+          set -e
+
           if [ "$BUILD_EXIT" -eq 0 ]; then
-            cp app/build/outputs/apk/debug/app-debug.apk dist/android-session-bridge-debug.apk
+            cp app/build/outputs/apk/release/app-release.apk dist/Android-Session-Bridge-0.2.0-release.apk
+            APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+            "$APKSIGNER" verify --verbose --print-certs dist/Android-Session-Bridge-0.2.0-release.apk | tee dist/signature.txt
             STATUS="success"
           else
             STATUS="failure"
           fi
-          printf '{"status":"%s","commit":"%s","run_id":"%s","built_at":"%s"}\n' \
-            "$STATUS" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%FT%TZ)" > dist/build-status.json
+
+          printf '{"status":"%s","variant":"release","version":"0.2.0","commit":"%s","run_id":"%s","built_at":"%s"}\n'             "$STATUS" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%FT%TZ)" > dist/build-status.json
+
           cd ../..
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tools/android-session-bridge/dist
-          git commit -m "android bridge: publish APK build [skip ci]" || true
+          git commit -m "android bridge: publish signed release build [skip ci]" || true
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             git push origin HEAD:main
           fi
+          exit "$BUILD_EXIT"
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-session-bridge-build
+          name: android-session-bridge-release
           path: |
             tools/android-session-bridge/dist/build-status.json
             tools/android-session-bridge/dist/build.log
-            tools/android-session-bridge/dist/android-session-bridge-debug.apk
+            tools/android-session-bridge/dist/signature.txt
+            tools/android-session-bridge/dist/Android-Session-Bridge-0.2.0-release.apk
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Fail workflow when APK build failed
+      - name: Verify release exists
         if: always()
         shell: bash
         run: |
-          test -f tools/android-session-bridge/dist/android-session-bridge-debug.apk
+          test -f tools/android-session-bridge/dist/Android-Session-Bridge-0.2.0-release.apk
