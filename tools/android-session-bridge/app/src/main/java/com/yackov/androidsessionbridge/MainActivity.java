@@ -96,6 +96,10 @@ public class MainActivity extends Activity {
     private Button newCodeButton;
     private Button disconnectButton;
     private Button currentSessionButton;
+    private LinearLayout currentSessionActions;
+    private Button currentAgentsButton;
+    private Button currentRunButton;
+    private Button currentRenameButton;
     private Button deviceDisconnectButton;
     private Button accessibilityButton;
     private Button closeButton;
@@ -310,6 +314,36 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams currentLp = matchWrap();
         currentLp.setMargins(0, dp(14), 0, 0);
         sessionCard.addView(currentSessionButton, currentLp);
+
+        currentSessionActions = new LinearLayout(this);
+        currentSessionActions.setOrientation(LinearLayout.HORIZONTAL);
+        currentSessionActions.setGravity(Gravity.CENTER);
+        currentSessionActions.setVisibility(View.GONE);
+
+        currentAgentsButton = compactButton("Agents", false, false);
+        currentAgentsButton.setOnClickListener(v -> {
+            JSONObject session = findSessionById(currentSessionId);
+            if (session != null) configureSessionAgents(session);
+        });
+        currentSessionActions.addView(currentAgentsButton, weightedButtonLp());
+
+        currentRunButton = compactButton("Run", false, false);
+        currentRunButton.setOnClickListener(v -> {
+            JSONObject session = findSessionById(currentSessionId);
+            if (session != null) requestSessionAgentRun(session);
+        });
+        currentSessionActions.addView(currentRunButton, weightedButtonLp());
+
+        currentRenameButton = compactButton("Rename", false, false);
+        currentRenameButton.setOnClickListener(v -> {
+            JSONObject session = findSessionById(currentSessionId);
+            if (session != null) promptRenameSession(session);
+        });
+        currentSessionActions.addView(currentRenameButton, weightedButtonLp());
+
+        LinearLayout.LayoutParams currentActionsLp = matchWrap();
+        currentActionsLp.setMargins(0, dp(10), 0, 0);
+        sessionCard.addView(currentSessionActions, currentActionsLp);
 
         deviceDisconnectButton = actionButton("נתק מכשיר", false);
         deviceDisconnectButton.setVisibility(View.GONE);
@@ -754,7 +788,6 @@ public class MainActivity extends Activity {
             LinearLayout agentCard = new LinearLayout(this);
             agentCard.setOrientation(LinearLayout.VERTICAL);
             agentCard.setPadding(dp(12), dp(10), dp(12), dp(10));
-            agentCard.setBackground(rounded(CARD_ALT, 14, Color.rgb(45, 104, 108)));
 
             CheckBox cb = new CheckBox(this);
             cb.setText(title + (skill.isEmpty() ? "" : " · " + skill));
@@ -763,6 +796,14 @@ public class MainActivity extends Activity {
             cb.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             cb.setChecked(selected.contains(id));
             cb.setTag(id);
+
+            Runnable refreshAgentCard = () -> agentCard.setBackground(
+                    rounded(
+                            CARD_ALT,
+                            14,
+                            cb.isChecked() ? TEAL : Color.rgb(51, 65, 85)));
+            refreshAgentCard.run();
+
             agentCard.addView(cb, matchWrap());
 
             TextView desc = label(description, 12, MUTED, false);
@@ -771,6 +812,7 @@ public class MainActivity extends Activity {
             descLp.setMargins(dp(34), dp(3), dp(12), 0);
             agentCard.addView(desc, descLp);
 
+            cb.setOnCheckedChangeListener((buttonView, isChecked) -> refreshAgentCard.run());
             agentCard.setOnClickListener(v -> cb.setChecked(!cb.isChecked()));
             addPressAnimation(agentCard);
 
@@ -945,14 +987,14 @@ public class MainActivity extends Activity {
         b.setMinHeight(dp(44));
 
         if (destructive) {
-            b.setTextColor(Color.rgb(254, 226, 226));
-            b.setBackground(rounded(Color.rgb(72, 24, 34), 12, RED));
+            b.setTextColor(Color.rgb(254, 202, 202));
+            b.setBackground(rounded(CARD_ALT, 12, RED));
         } else if (primary) {
             b.setTextColor(Color.rgb(6, 25, 35));
             b.setBackground(rounded(TEAL, 12, TEAL));
         } else {
             b.setTextColor(TEXT);
-            b.setBackground(rounded(CARD_ALT, 12, Color.rgb(45, 104, 108)));
+            b.setBackground(rounded(CARD_ALT, 12, Color.rgb(51, 65, 85)));
         }
         addPressAnimation(b);
         return b;
@@ -961,7 +1003,7 @@ public class MainActivity extends Activity {
     private LinearLayout.LayoutParams weightedButtonLp() {
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lp.setMargins(dp(3), 0, dp(3), 0);
+        lp.setMargins(dp(4), 0, dp(4), 0);
         return lp;
     }
 
@@ -1376,6 +1418,7 @@ public class MainActivity extends Activity {
 
         if (!id.paired) {
             currentSessionButton.setVisibility(View.GONE);
+            currentSessionActions.setVisibility(View.GONE);
             deviceDisconnectButton.setVisibility(View.GONE);
 
             if (activePairCode != null && activePairExpiresAt > 0) {
@@ -1442,7 +1485,15 @@ public class MainActivity extends Activity {
             currentSessionButton.setText("התנתק מהסשן הנוכחי");
             currentSessionButton.setTextColor(Color.rgb(254, 226, 226));
             currentSessionButton.setBackground(
-                    rounded(Color.rgb(72, 24, 34), 14, RED));
+                    rounded(CARD_ALT, 14, RED));
+
+            JSONArray currentRoles = current.optJSONArray("agent_suite");
+            int selectedCount = currentRoles == null ? 0 : currentRoles.length();
+            int allCount = agentRegistryCache == null ? 0 : agentRegistryCache.length();
+            currentAgentsButton.setText("Agents " + selectedCount + "/" + Math.max(allCount, selectedCount));
+            currentRunButton.setEnabled(selectedCount > 0);
+            currentRunButton.setAlpha(currentRunButton.isEnabled() ? 1f : 0.40f);
+            currentSessionActions.setVisibility(View.VISIBLE);
         } else {
             connectionTitle.setText("הסשן הנוכחי לא מחובר");
             connectionTitle.setTextColor(live ? TEAL : AMBER);
@@ -1451,6 +1502,7 @@ public class MainActivity extends Activity {
             currentSessionButton.setText("התחבר לסשן הנוכחי");
             currentSessionButton.setTextColor(Color.rgb(6, 25, 35));
             currentSessionButton.setBackground(rounded(TEAL, 14, TEAL));
+            currentSessionActions.setVisibility(View.GONE);
         }
         addPressAnimation(currentSessionButton);
 
