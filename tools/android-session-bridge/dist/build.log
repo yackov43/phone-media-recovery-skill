@@ -20,8 +20,9 @@ Daemon will be stopped at the end of the build
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:checkReleaseDuplicateClasses
+> Task :app:processReleaseManifestForPackage
 > Task :app:desugarReleaseFileDependencies
+> Task :app:checkReleaseDuplicateClasses
 > Task :app:mergeReleaseStartupProfile
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
@@ -32,14 +33,9 @@ Daemon will be stopped at the end of the build
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:processReleaseResources
 > Task :app:collectReleaseDependencies
 > Task :app:mergeReleaseJavaResource
-> Task :app:sdkReleaseDependencyData
-> Task :app:validateSigningRelease
-> Task :app:writeReleaseAppMetadata
-> Task :app:writeReleaseSigningConfigVersions
-> Task :app:processReleaseManifestForPackage
-> Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
 /home/runner/work/phone-media-recovery-skill/phone-media-recovery-skill/tools/android-session-bridge/app/src/main/java/com/yackov/androidsessionbridge/BridgeAccessibilityService.java:67: error: cannot find symbol
@@ -52,7 +48,7 @@ Note: Recompile with -Xlint:deprecation for details.
 1 error
 
 > Task :app:compileReleaseJavaWithJavac FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790938922756.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790939029381.json
 
 FAILURE: Build failed with an exception.
 
@@ -64,5 +60,5 @@ Execution failed for task ':app:compileReleaseJavaWithJavac'.
 > Run with --info option to get more log output.
 > Run with --scan to get full insights.
 
-BUILD FAILED in 16s
-32 actionable tasks: 32 executed
+BUILD FAILED in 13s
+28 actionable tasks: 28 executed
