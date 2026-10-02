@@ -53,12 +53,12 @@ public class MainActivity extends Activity {
 
     private static final String[] AGENT_IDS = {
             "flow_qa", "ui_ux", "security", "performance",
-            "reliability", "print_fidelity", "regression", "mobile_integration"
+            "reliability", "artifact_integrity", "regression", "mobile_integration"
     };
 
     private static final String[] AGENT_TITLES = {
             "Flow QA", "UI / UX", "Security", "Performance",
-            "Reliability", "Print Fidelity", "Regression", "Mobile Integration"
+            "Reliability", "Artifact Integrity", "Regression", "Mobile Integration"
     };
 
     private static final String[] AGENT_DESCRIPTIONS = {
@@ -67,7 +67,7 @@ public class MainActivity extends Activity {
             "בודק Pairing, הרשאות, פרטיות, סודות ומשטח תקיפה.",
             "בודק latency, polling, שימוש בזיכרון, CPU וסוללה.",
             "בודק retry, timeout, reconnect והתאוששות מתקלות.",
-            "בודק נאמנות למקור, Fit, פיקסלים, DPI ו־PNG סופי.",
+            "בודק שלמות קבצים, תמונות, attachments, metadata ותוצר סופי.",
             "מריץ מחדש תקלות שכבר תוקנו כדי למנוע חזרה לאחור.",
             "בודק Android ו־ChatGPT יחד על המכשיר הפיזי."
     };
