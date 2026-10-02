@@ -46,6 +46,13 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String KEY_DISCOVERY_ACTIVE = "discovery_active";
     private static final String KEY_DISCOVERY_PASS = "discovery_pass";
     private static final String KEY_DISCOVERY_TITLES = "discovery_titles";
+    private static final String KEY_TARGET_CHAT_TITLE = "target_chat_title";
+    private static final String KEY_TARGET_CHAT_MESSAGE = "target_chat_message";
+    private static final String KEY_TARGET_CHAT_CREATED = "target_chat_created";
+    private static final String KEY_CURRENT_CHAT_DISCOVERY = "current_chat_discovery";
+    private static final String KEY_CURRENT_CHAT_TITLE = "current_chat_title";
+    private static final String KEY_CURRENT_CHAT_KEY = "current_chat_key";
+    private static final String KEY_CURRENT_CHAT_ERROR = "current_chat_error";
 
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     private final BridgeApi api = new BridgeApi();
@@ -71,12 +78,55 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .apply();
     }
 
+    public static void queueMessageToChat(Context context, String title, String message) {
+        if (context == null || title == null || title.trim().isEmpty() ||
+                message == null || message.trim().isEmpty()) return;
+        context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_TARGET_CHAT_TITLE, title.trim())
+                .putString(KEY_TARGET_CHAT_MESSAGE, message.trim())
+                .putLong(KEY_TARGET_CHAT_CREATED, System.currentTimeMillis())
+                .apply();
+    }
+
+    public static void requestCurrentChatIdentity(Context context) {
+        if (context == null) return;
+        context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_CURRENT_CHAT_DISCOVERY, true)
+                .remove(KEY_CURRENT_CHAT_TITLE)
+                .remove(KEY_CURRENT_CHAT_KEY)
+                .remove(KEY_CURRENT_CHAT_ERROR)
+                .apply();
+    }
+
+    public static String currentChatTitle(Context context) {
+        return context == null ? null :
+                context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                        .getString(KEY_CURRENT_CHAT_TITLE, null);
+    }
+
+    public static String currentChatKey(Context context) {
+        return context == null ? null :
+                context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                        .getString(KEY_CURRENT_CHAT_KEY, null);
+    }
+
+    public static String currentChatError(Context context) {
+        return context == null ? null :
+                context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                        .getString(KEY_CURRENT_CHAT_ERROR, null);
+    }
+
+
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         worker.scheduleWithFixedDelay(this::pollOnce, 250, 1200, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptPendingChatGptMessage, 700, TimeUnit.MILLISECONDS);
+        worker.schedule(this::attemptTargetedChatMessage, 760, TimeUnit.MILLISECONDS);
+        worker.schedule(this::attemptCurrentChatDiscovery, 820, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptSessionDiscovery, 900, TimeUnit.MILLISECONDS);
     }
 
@@ -483,7 +533,157 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 type == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
                 type == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
             worker.schedule(this::attemptPendingChatGptMessage, 350, TimeUnit.MILLISECONDS);
+            worker.schedule(this::attemptTargetedChatMessage, 390, TimeUnit.MILLISECONDS);
+            worker.schedule(this::attemptCurrentChatDiscovery, 405, TimeUnit.MILLISECONDS);
             worker.schedule(this::attemptSessionDiscovery, 420, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void attemptTargetedChatMessage() {
+        if (localAutomationBusy) return;
+        SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
+        String title = prefs.getString(KEY_TARGET_CHAT_TITLE, null);
+        String message = prefs.getString(KEY_TARGET_CHAT_MESSAGE, null);
+        if (title == null || title.isEmpty() || message == null || message.isEmpty()) return;
+
+        long created = prefs.getLong(KEY_TARGET_CHAT_CREATED, 0L);
+        if (created > 0L && System.currentTimeMillis() - created > 120_000L) {
+            prefs.edit()
+                    .remove(KEY_TARGET_CHAT_TITLE)
+                    .remove(KEY_TARGET_CHAT_MESSAGE)
+                    .remove(KEY_TARGET_CHAT_CREATED)
+                    .apply();
+            return;
+        }
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null ||
+                !"com.openai.chatgpt".contentEquals(root.getPackageName())) return;
+
+        localAutomationBusy = true;
+        try {
+            if (!looksLikeChatSidebar(root)) {
+                AccessibilityNodeInfo opener = findSidebarOpener(root);
+                if (opener != null) {
+                    AccessibilityNodeInfo clickable = clickableAncestor(opener);
+                    if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    worker.schedule(this::attemptTargetedChatMessage, 520, TimeUnit.MILLISECONDS);
+                }
+                return;
+            }
+
+            AccessibilityNodeInfo target = findChatTitleNode(root, title);
+            if (target == null) {
+                AccessibilityNodeInfo scrollable = findLargestScrollable(root);
+                if (scrollable != null &&
+                        scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+                    worker.schedule(this::attemptTargetedChatMessage, 430, TimeUnit.MILLISECONDS);
+                }
+                return;
+            }
+
+            AccessibilityNodeInfo clickable = clickableAncestor(target);
+            boolean opened = clickable != null &&
+                    clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            if (!opened) {
+                Rect r = new Rect();
+                target.getBoundsInScreen(r);
+                if (!r.isEmpty()) opened = tap(r.exactCenterX(), r.exactCenterY());
+            }
+            if (!opened) return;
+
+            prefs.edit()
+                    .remove(KEY_TARGET_CHAT_TITLE)
+                    .remove(KEY_TARGET_CHAT_MESSAGE)
+                    .remove(KEY_TARGET_CHAT_CREATED)
+                    .putString(KEY_PENDING_CHATGPT_MESSAGE, message)
+                    .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
+                    .apply();
+
+            worker.schedule(this::attemptPendingChatGptMessage, 650, TimeUnit.MILLISECONDS);
+        } finally {
+            localAutomationBusy = false;
+        }
+    }
+
+    private void attemptCurrentChatDiscovery() {
+        if (localAutomationBusy) return;
+        SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
+        if (!prefs.getBoolean(KEY_CURRENT_CHAT_DISCOVERY, false)) return;
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null ||
+                !"com.openai.chatgpt".contentEquals(root.getPackageName())) return;
+
+        localAutomationBusy = true;
+        try {
+            if (!looksLikeChatSidebar(root)) {
+                AccessibilityNodeInfo opener = findSidebarOpener(root);
+                if (opener != null) {
+                    AccessibilityNodeInfo clickable = clickableAncestor(opener);
+                    if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    worker.schedule(this::attemptCurrentChatDiscovery, 550, TimeUnit.MILLISECONDS);
+                } else {
+                    prefs.edit().putString(KEY_CURRENT_CHAT_ERROR, "SIDEBAR_OPENER_NOT_FOUND").apply();
+                }
+                return;
+            }
+
+            AccessibilityNodeInfo selected = findSelectedChatTitleNode(root);
+            if (selected == null) {
+                prefs.edit().putString(KEY_CURRENT_CHAT_ERROR, "CURRENT_CHAT_NOT_IDENTIFIED").apply();
+                return;
+            }
+
+            String title = normalizeChatTitle(String.valueOf(selected.getText()));
+            if (title.isEmpty()) {
+                prefs.edit().putString(KEY_CURRENT_CHAT_ERROR, "CURRENT_CHAT_TITLE_EMPTY").apply();
+                return;
+            }
+
+            LinkedHashSet<String> known = readSavedDiscoveryTitles(prefs);
+            int ordinal = 1;
+            int index = 0;
+            for (String item : known) {
+                index++;
+                if (normalizeChatTitle(item).equals(title)) {
+                    ordinal = index;
+                    break;
+                }
+            }
+            String key = stableChatKey(title, ordinal);
+
+            prefs.edit()
+                    .putBoolean(KEY_CURRENT_CHAT_DISCOVERY, false)
+                    .putString(KEY_CURRENT_CHAT_TITLE, title)
+                    .putString(KEY_CURRENT_CHAT_KEY, key)
+                    .remove(KEY_CURRENT_CHAT_ERROR)
+                    .apply();
+
+            DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+            if (id.paired) {
+                JSONArray one = new JSONArray();
+                one.put(new JSONObject()
+                        .put("chatKey", key)
+                        .put("title", title)
+                        .put("ordinal", ordinal)
+                        .put("visibleAtSync", true));
+                api.syncDiscoveredChats(id, one);
+            }
+
+            AccessibilityNodeInfo clickable = clickableAncestor(selected);
+            if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+
+            Intent bridge = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            if (bridge != null) {
+                bridge.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(bridge);
+            }
+        } catch (Exception e) {
+            prefs.edit().putString(KEY_CURRENT_CHAT_ERROR,
+                    "CURRENT_CHAT_DISCOVERY_FAILED:" + e.getClass().getSimpleName()).apply();
+        } finally {
+            localAutomationBusy = false;
         }
     }
 
@@ -575,6 +775,27 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 }
             }
 
+            AccessibilityNodeInfo selectedNow = findSelectedChatTitleNode(root);
+            if (selectedNow != null && selectedNow.getText() != null) {
+                String selectedTitle = normalizeChatTitle(selectedNow.getText().toString());
+                if (!selectedTitle.isEmpty()) {
+                    LinkedHashSet<String> before = readSavedDiscoveryTitles(prefs);
+                    int selectedOrdinal = 1;
+                    int idx = 0;
+                    for (String item : before) {
+                        idx++;
+                        if (normalizeChatTitle(item).equals(selectedTitle)) {
+                            selectedOrdinal = idx;
+                            break;
+                        }
+                    }
+                    prefs.edit()
+                            .putString(KEY_CURRENT_CHAT_TITLE, selectedTitle)
+                            .putString(KEY_CURRENT_CHAT_KEY, stableChatKey(selectedTitle, selectedOrdinal))
+                            .apply();
+                }
+            }
+
             LinkedHashSet<String> titles = readSavedDiscoveryTitles(prefs);
             titles.addAll(collectVisibleChatTitles(root));
             prefs.edit()
@@ -635,6 +856,71 @@ public class BridgeAccessibilityService extends AccessibilityService {
             getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
                     .edit().putBoolean(KEY_DISCOVERY_ACTIVE, false).apply();
         }
+    }
+
+    private AccessibilityNodeInfo clickableAncestor(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo current = node;
+        int hops = 0;
+        while (current != null && hops++ < 6) {
+            if (current.isClickable()) return current;
+            current = current.getParent();
+        }
+        return null;
+    }
+
+    private AccessibilityNodeInfo findChatTitleNode(AccessibilityNodeInfo root, String wanted) {
+        if (wanted == null) return null;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.removeFirst();
+            CharSequence raw = n.getText();
+            if (raw != null) {
+                String title = normalizeChatTitle(raw.toString());
+                if (title.equals(wanted) && isLikelyChatTitle(title, n)) return n;
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return null;
+    }
+
+    private AccessibilityNodeInfo findSelectedChatTitleNode(AccessibilityNodeInfo root) {
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        AccessibilityNodeInfo accessibilityFocusedCandidate = null;
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.removeFirst();
+            CharSequence raw = n.getText();
+            if (raw != null) {
+                String title = normalizeChatTitle(raw.toString());
+                if (isLikelyChatTitle(title, n)) {
+                    if (n.isSelected()) return n;
+                    String desc = n.getContentDescription() == null ? "" :
+                            n.getContentDescription().toString().toLowerCase(Locale.ROOT);
+                    if (desc.contains("selected") || desc.contains("current") ||
+                            desc.contains("נבחר") || desc.contains("נוכחי")) return n;
+                    if (n.isAccessibilityFocused()) accessibilityFocusedCandidate = n;
+                    AccessibilityNodeInfo p = n.getParent();
+                    int hops = 0;
+                    while (p != null && hops++ < 4) {
+                        if (p.isSelected()) return n;
+                        String pd = p.getContentDescription() == null ? "" :
+                                p.getContentDescription().toString().toLowerCase(Locale.ROOT);
+                        if (pd.contains("selected") || pd.contains("current") ||
+                                pd.contains("נבחר") || pd.contains("נוכחי")) return n;
+                        p = p.getParent();
+                    }
+                }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return accessibilityFocusedCandidate;
     }
 
     private AccessibilityNodeInfo findSidebarOpener(AccessibilityNodeInfo root) {
