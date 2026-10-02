@@ -12,6 +12,7 @@ public final class DeviceIdentity {
     private static final String KEY_DEVICE = "device_id";
     private static final String KEY_SECRET = "device_secret";
     private static final String KEY_PAIRED = "paired";
+    private static final String KEY_LAST_CONTACT = "last_contact_ms";
 
     public final String deviceId;
     public final String secret;
@@ -40,5 +41,15 @@ public final class DeviceIdentity {
     public static void markPaired(Context context, boolean paired) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putBoolean(KEY_PAIRED, paired).apply();
+    }
+
+    public static void markContact(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putLong(KEY_LAST_CONTACT, System.currentTimeMillis()).apply();
+    }
+
+    public static long lastContact(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_LAST_CONTACT, 0L);
     }
 }
