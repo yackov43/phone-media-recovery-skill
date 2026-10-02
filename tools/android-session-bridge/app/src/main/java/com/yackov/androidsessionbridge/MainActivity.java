@@ -140,6 +140,7 @@ public class MainActivity extends Activity {
         root.addView(closeButton, actionLp());
 
         setContentView(scroll);
+        syncPendingPairingFromStorage();
         refreshConnectionUi();
         loadAgentRegistry();
 
@@ -451,6 +452,11 @@ public class MainActivity extends Activity {
                 activePairCode = code;
                 activePairRequestId = requestId.isEmpty() ? null : requestId;
                 activePairExpiresAt = expiry > 0 ? expiry : System.currentTimeMillis() + 10 * 60_000L;
+                DeviceIdentity.savePendingPairing(
+                        this,
+                        activePairRequestId,
+                        activePairCode,
+                        activePairExpiresAt);
 
                 runOnUiThread(() -> {
                     connectionTitle.setText("קוד מוכן");
@@ -529,6 +535,7 @@ public class MainActivity extends Activity {
                     activePairRequestId = null;
                     activePairExpiresAt = 0L;
                     DeviceIdentity.markPaired(this, true);
+                    DeviceIdentity.clearPendingPairing(this);
                     runOnUiThread(() -> {
                         pairCode.setText("✓ CONNECTED");
                         pairInstruction.setText("הסשן אישר את הקוד והחיבור פעיל.");
@@ -539,6 +546,7 @@ public class MainActivity extends Activity {
                     activePairCode = null;
                     activePairRequestId = null;
                     activePairExpiresAt = 0L;
+                    DeviceIdentity.clearPendingPairing(this);
                     runOnUiThread(() -> {
                         pairCode.setText("פג תוקף");
                         pairInstruction.setText("קוד החיבור לא אושר בזמן. צור קוד חדש.");
@@ -860,6 +868,33 @@ public class MainActivity extends Activity {
         return d;
     }
 
+    private void syncPendingPairingFromStorage() {
+        String requestId = DeviceIdentity.pendingPairRequest(this);
+        String code = DeviceIdentity.pendingPairCode(this);
+        long expiresAt = DeviceIdentity.pendingPairExpires(this);
+
+        if (requestId == null || requestId.isEmpty() || code == null || code.isEmpty()) {
+            if (DeviceIdentity.getOrCreate(this).paired) {
+                activePairRequestId = null;
+                activePairCode = null;
+                activePairExpiresAt = 0L;
+            }
+            return;
+        }
+
+        if (expiresAt > 0L && System.currentTimeMillis() >= expiresAt) {
+            DeviceIdentity.clearPendingPairing(this);
+            activePairRequestId = null;
+            activePairCode = null;
+            activePairExpiresAt = 0L;
+            return;
+        }
+
+        activePairRequestId = requestId;
+        activePairCode = code;
+        activePairExpiresAt = expiresAt;
+    }
+
     private String formatPairCode(String code) {
         if (code == null || code.length() != 6) return code == null ? "" : code;
         return code.substring(0, 3) + "  " + code.substring(3);
@@ -884,6 +919,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        syncPendingPairingFromStorage();
+        loadAgentRegistry();
         handler.removeCallbacks(refresher);
         handler.post(refresher);
     }
