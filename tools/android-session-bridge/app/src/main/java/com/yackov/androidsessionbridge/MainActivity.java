@@ -18,6 +18,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -94,8 +95,15 @@ public class MainActivity extends Activity {
     private Button connectButton;
     private Button newCodeButton;
     private Button disconnectButton;
+    private Button currentSessionButton;
+    private Button deviceDisconnectButton;
     private Button accessibilityButton;
     private Button closeButton;
+
+    private String currentSessionId = null;
+    private String currentSessionTitle = null;
+    private String currentSessionChatKey = null;
+    private volatile boolean pendingCurrentSessionDiscovery = false;
 
     private volatile boolean serverCheckInFlight = false;
     private long lastServerCheckMs = 0L;
@@ -142,10 +150,18 @@ public class MainActivity extends Activity {
         root.addView(accessibilityButton, actionLp());
 
         closeButton = actionButton("הכול מחובר — אפשר לצאת", true);
-        closeButton.setOnClickListener(v -> finishAndRemoveTask());
-        root.addView(closeButton, actionLp());
+        closeButton.setOnClickListener(v -> exitToHome());
+        LinearLayout.LayoutParams closeLp = actionLp();
+        closeLp.setMargins(0, dp(8), 0, dp(14));
+        root.addView(closeButton, closeLp);
 
         setContentView(scroll);
+        scroll.setOnApplyWindowInsetsListener((v, insets) -> {
+            int bottom = insets.getInsets(WindowInsets.Type.systemBars()).bottom;
+            root.setPadding(dp(18), dp(18), dp(18), dp(28) + bottom);
+            return insets;
+        });
+        scroll.requestApplyInsets();
         syncPendingPairingFromStorage();
         refreshConnectionUi();
         loadAgentRegistry();
@@ -219,6 +235,12 @@ public class MainActivity extends Activity {
     private View buildSessionCard() {
         sessionCard = card();
 
+        TextView section = label("Current GPT Session", 13, TEAL, true);
+        section.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams sectionLp = matchWrap();
+        sectionLp.setMargins(0, 0, 0, dp(8));
+        sessionCard.addView(section, sectionLp);
+
         connectionTitle = label("בודק חיבור…", 24, TEXT, true);
         connectionTitle.setGravity(Gravity.CENTER);
         sessionCard.addView(connectionTitle, matchWrap());
@@ -236,6 +258,7 @@ public class MainActivity extends Activity {
         tLp.setMargins(0, dp(9), 0, dp(8));
         sessionCard.addView(technicalStatus, tLp);
 
+        // First-time device pairing only. After the device is paired this area disappears.
         codeArea = new LinearLayout(this);
         codeArea.setOrientation(LinearLayout.VERTICAL);
         codeArea.setVisibility(View.GONE);
@@ -255,7 +278,7 @@ public class MainActivity extends Activity {
         pairInstruction.setTextIsSelectable(true);
         codeArea.addView(pairInstruction, matchWrap());
 
-        connectButton = actionButton("חבר את המכשיר", true);
+        connectButton = actionButton("אשר חיבור מכשיר", true);
         connectButton.setVisibility(View.GONE);
         connectButton.setOnClickListener(v -> connectToChatGptSession());
         LinearLayout.LayoutParams connectLp = matchWrap();
@@ -269,22 +292,34 @@ public class MainActivity extends Activity {
         newLp.setMargins(0, dp(8), 0, 0);
         codeArea.addView(newCodeButton, newLp);
 
-        generateCodeButton = actionButton("צור קוד חיבור", true);
+        generateCodeButton = actionButton("חבר את המכשיר בפעם הראשונה", true);
         generateCodeButton.setOnClickListener(v -> generatePairCode());
         LinearLayout.LayoutParams genLp = matchWrap();
         genLp.setMargins(0, dp(12), 0, 0);
         sessionCard.addView(generateCodeButton, genLp);
 
-        disconnectButton = actionButton("נתק את המכשיר כולו", false);
-        disconnectButton.setTextColor(Color.rgb(254, 202, 202));
-        disconnectButton.setBackground(rounded(Color.rgb(72, 24, 34), 14, Color.rgb(127, 29, 29)));
-        addPressAnimation(disconnectButton);
-        disconnectButton.setVisibility(View.GONE);
-        disconnectButton.setOnClickListener(v -> disconnect());
-        LinearLayout.LayoutParams discLp = matchWrap();
-        discLp.setMargins(0, dp(12), 0, 0);
-        sessionCard.addView(disconnectButton, discLp);
+        currentSessionButton = actionButton("התחבר לסשן הנוכחי", true);
+        currentSessionButton.setVisibility(View.GONE);
+        currentSessionButton.setOnClickListener(v -> {
+            if (currentSessionId != null && !currentSessionId.isEmpty()) {
+                updateSessionState(currentSessionId, "disconnected");
+            } else {
+                beginCurrentSessionConnection();
+            }
+        });
+        LinearLayout.LayoutParams currentLp = matchWrap();
+        currentLp.setMargins(0, dp(14), 0, 0);
+        sessionCard.addView(currentSessionButton, currentLp);
 
+        deviceDisconnectButton = actionButton("נתק מכשיר", false);
+        deviceDisconnectButton.setVisibility(View.GONE);
+        deviceDisconnectButton.setOnClickListener(v -> disconnect());
+        LinearLayout.LayoutParams deviceLp = matchWrap();
+        deviceLp.setMargins(0, dp(8), 0, 0);
+        sessionCard.addView(deviceDisconnectButton, deviceLp);
+
+        // Legacy field kept for source compatibility; no longer shown as a second disconnect control.
+        disconnectButton = deviceDisconnectButton;
         return sessionCard;
     }
 
@@ -343,7 +378,16 @@ public class MainActivity extends Activity {
                     throw new IllegalStateException(response.optString("error", "session_list_failed"));
                 }
                 sessionsCache = sessions;
-                runOnUiThread(this::loadDiscoveredChats);
+                currentSessionId = response.optString("currentSessionId", null);
+                if (currentSessionId != null && currentSessionId.isEmpty()) currentSessionId = null;
+                JSONObject current = findSessionById(currentSessionId);
+                currentSessionTitle = current == null ? null :
+                        current.optString("chat_title", current.optString("label", "GPT Session"));
+                currentSessionChatKey = current == null ? null : current.optString("chat_key", null);
+                runOnUiThread(() -> {
+                    refreshConnectionUi();
+                    loadDiscoveredChats();
+                });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     sessionsStatus.setText("שגיאת טעינת Sessions: " + safeMessage(e));
@@ -404,22 +448,34 @@ public class MainActivity extends Activity {
     private void renderUnifiedSessions(JSONArray chats) {
         sessionsRowsContainer.removeAllViews();
         Set<String> renderedSessionIds = new HashSet<>();
+        int rendered = 0;
 
         for (int i = 0; i < chats.length(); i++) {
             JSONObject chat = chats.optJSONObject(i);
             if (chat == null) continue;
             String chatKey = chat.optString("chat_key", "");
             JSONObject session = findSessionByChatKey(chatKey);
+
+            if (session != null && currentSessionId != null &&
+                    currentSessionId.equals(session.optString("session_id", ""))) {
+                continue;
+            }
+            if (currentSessionChatKey != null && !currentSessionChatKey.isEmpty() &&
+                    currentSessionChatKey.equals(chatKey)) {
+                continue;
+            }
+
             if (session != null) renderedSessionIds.add(session.optString("session_id", ""));
             sessionsRowsContainer.addView(buildUnifiedSessionRow(chat, session), sessionRowLp());
+            rendered++;
         }
 
-        // Keep legacy/pre-discovery sessions visible once, without duplicating discovered rows.
+        // Keep pre-discovery sessions visible once, but never duplicate the Current Session.
         for (int i = 0; i < sessionsCache.length(); i++) {
             JSONObject session = sessionsCache.optJSONObject(i);
             if (session == null) continue;
             String sid = session.optString("session_id", "");
-            if (renderedSessionIds.contains(sid)) continue;
+            if (sid.equals(currentSessionId) || renderedSessionIds.contains(sid)) continue;
 
             JSONObject synthetic = new JSONObject();
             try {
@@ -430,26 +486,25 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
             sessionsRowsContainer.addView(buildUnifiedSessionRow(synthetic, session), sessionRowLp());
+            rendered++;
         }
 
-        int total = Math.max(chats.length(), sessionsRowsContainer.getChildCount());
-        if (sessionsRowsContainer.getChildCount() == 0) {
+        if (rendered == 0) {
             TextView empty = label(
-                    "לא נמצאו שיחות. לחץ „סרוק ורענן שיחות ChatGPT”.",
+                    "אין כרגע Sessions נוספים. הסשן הנוכחי מוצג למעלה ואינו משוכפל כאן.",
                     13, MUTED, false);
             empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dp(10), 0, dp(10));
             sessionsRowsContainer.addView(empty, matchWrap());
-            sessionsStatus.setText("0 Sessions");
-            sessionsStatus.setTextColor(MUTED);
-            return;
         }
 
         int connected = 0;
         for (int i = 0; i < sessionsCache.length(); i++) {
             JSONObject s = sessionsCache.optJSONObject(i);
-            if (isSessionConnected(s)) connected++;
+            if (s != null && !s.optString("session_id", "").equals(currentSessionId) &&
+                    isSessionConnected(s)) connected++;
         }
-        sessionsStatus.setText("✓ " + total + " Sessions · " + connected +
+        sessionsStatus.setText("✓ " + rendered + " Sessions נוספים · " + connected +
                 " מחוברים · Session Isolation אטומי");
         sessionsStatus.setTextColor(GREEN);
     }
@@ -465,6 +520,17 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    private JSONObject findSessionById(String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) return null;
+        for (int i = 0; i < sessionsCache.length(); i++) {
+            JSONObject session = sessionsCache.optJSONObject(i);
+            if (session != null && sessionId.equals(session.optString("session_id", ""))) {
+                return session;
+            }
+        }
+        return null;
+    }
+
     private boolean isSessionConnected(JSONObject session) {
         return session != null
                 && session.optBoolean("enabled", true)
@@ -474,48 +540,47 @@ public class MainActivity extends Activity {
     private View buildUnifiedSessionRow(JSONObject chat, JSONObject session) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(dp(13), dp(12), dp(13), dp(12));
+        row.setPadding(dp(14), dp(14), dp(14), dp(14));
         row.setBackground(rounded(CARD_ALT, 16, Color.rgb(35, 53, 80)));
 
         String titleText = chat.optString(
                 "title",
                 session == null ? "GPT Session" :
                         session.optString("chat_title", session.optString("label", "GPT Session")));
-        String chatKey = chat.optString("chat_key", session == null ? "" : session.optString("chat_key", ""));
+        String chatKey = chat.optString(
+                "chat_key",
+                session == null ? "" : session.optString("chat_key", ""));
         boolean connected = isSessionConnected(session);
         JSONArray roles = session == null ? null : session.optJSONArray("agent_suite");
         int roleCount = roles == null ? 0 : roles.length();
         int allAgents = agentRegistryCache == null ? 0 : agentRegistryCache.length();
 
-        LinearLayout heading = new LinearLayout(this);
-        heading.setOrientation(LinearLayout.HORIZONTAL);
-        heading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = label(titleText, 16, TEXT, true);
+        row.addView(title, matchWrap());
 
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams copyLp =
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-
-        copy.addView(label(titleText, 16, TEXT, true), matchWrap());
         TextView meta = label(
                 (connected ? "● מחובר" : "○ מנותק") +
-                        (chatKey.isEmpty() ? "" : " · ID " + chatKey.substring(0, Math.min(10, chatKey.length()))) +
-                        (session == null ? "" : " · Agents " + roleCount + "/" + Math.max(allAgents, roleCount)),
+                        (chatKey.isEmpty() ? "" :
+                                " · ID " + chatKey.substring(0, Math.min(10, chatKey.length()))) +
+                        (session == null ? "" :
+                                " · Agents " + roleCount + "/" + Math.max(allAgents, roleCount)),
                 11, connected ? GREEN : MUTED, false);
-        copy.addView(meta, matchWrap());
-        heading.addView(copy, copyLp);
+        LinearLayout.LayoutParams metaLp = matchWrap();
+        metaLp.setMargins(0, dp(5), 0, dp(12));
+        row.addView(meta, metaLp);
 
         Button toggle = connected
-                ? compactButton("התנתק", Color.rgb(92, 28, 38), Color.rgb(153, 27, 27), Color.rgb(254, 202, 202))
-                : compactButton("צור קוד חיבור", Color.rgb(13, 78, 74), Color.rgb(20, 184, 166), TEXT);
+                ? compactButton("התנתק", false, true)
+                : compactButton("התחבר", true, false);
         if (connected) {
             String sessionId = session.optString("session_id", "");
             toggle.setOnClickListener(v -> updateSessionState(sessionId, "disconnected"));
         } else {
             toggle.setOnClickListener(v -> generateSessionPairCode(chat, session));
         }
-        heading.addView(toggle, wrapWrap());
-        row.addView(heading, matchWrap());
+        LinearLayout.LayoutParams toggleLp = matchWrap();
+        toggleLp.setMargins(0, 0, 0, session == null ? 0 : dp(9));
+        row.addView(toggle, toggleLp);
 
         if (session != null) {
             LinearLayout actions = new LinearLayout(this);
@@ -524,27 +589,21 @@ public class MainActivity extends Activity {
 
             Button agents = compactButton(
                     "Agents " + roleCount + "/" + Math.max(allAgents, roleCount),
-                    Color.rgb(28, 56, 86), Color.rgb(56, 189, 248), TEXT);
+                    false, false);
             agents.setOnClickListener(v -> configureSessionAgents(session));
             actions.addView(agents, weightedButtonLp());
 
-            Button run = compactButton(
-                    "Run",
-                    Color.rgb(22, 65, 48), Color.rgb(34, 197, 94), TEXT);
+            Button run = compactButton("Run", false, false);
             run.setEnabled(connected && roleCount > 0);
-            run.setAlpha(run.isEnabled() ? 1f : 0.42f);
+            run.setAlpha(run.isEnabled() ? 1f : 0.40f);
             run.setOnClickListener(v -> requestSessionAgentRun(session));
             actions.addView(run, weightedButtonLp());
 
-            Button rename = compactButton(
-                    "Rename",
-                    Color.rgb(55, 48, 82), Color.rgb(139, 92, 246), TEXT);
+            Button rename = compactButton("Rename", false, false);
             rename.setOnClickListener(v -> promptRenameSession(session));
             actions.addView(rename, weightedButtonLp());
 
-            LinearLayout.LayoutParams actionsLp = matchWrap();
-            actionsLp.setMargins(0, dp(10), 0, 0);
-            row.addView(actions, actionsLp);
+            row.addView(actions, matchWrap());
         }
 
         return row;
@@ -570,6 +629,10 @@ public class MainActivity extends Activity {
             sessionsStatus.setTextColor(AMBER);
             return;
         }
+        if (!isAccessibilityEnabled()) {
+            showAccessibilityOnboarding(false);
+            return;
+        }
 
         JSONArray roles = existingSession == null
                 ? allRegistryAgentIds()
@@ -578,63 +641,44 @@ public class MainActivity extends Activity {
 
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         final JSONArray selectedRoles = roles;
-        sessionsStatus.setText("יוצר קוד חיבור ייעודי ל־„" + title + "”…");
+        sessionsStatus.setText("מחבר את „" + title + "”…");
         sessionsStatus.setTextColor(BLUE);
 
         io.execute(() -> {
             try {
                 JSONObject result = api.beginSessionPairing(
-                        id, title, chatKey, title, selectedRoles);
+                        id, title, chatKey, title, selectedRoles, false);
                 if (!result.optBoolean("ok", false)) {
                     throw new IllegalStateException(result.optString("error", "session_pair_failed"));
                 }
                 String code = result.optString("code", "");
                 String requestId = result.optString("requestId", "");
-                runOnUiThread(() -> showBoundSessionCode(title, requestId, code));
+                String instruction =
+                        "חבר את הסשן הזה ל-Android Session Bridge עם הקוד " + code;
+
+                BridgeAccessibilityService.queueMessageToChat(
+                        this, title, instruction);
+                Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+                if (intent == null) throw new IllegalStateException("ChatGPT לא נמצא במכשיר");
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+
+                runOnUiThread(() -> {
+                    sessionsStatus.setText(
+                            "פותח אוטומטית את „" + title + "” ומבצע Pairing…");
+                    sessionsStatus.setTextColor(BLUE);
+                    watchSessionPairing(requestId, title, false);
+                });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    sessionsStatus.setText("שגיאת יצירת קוד: " + safeMessage(e));
+                    sessionsStatus.setText("שגיאת חיבור Session: " + safeMessage(e));
                     sessionsStatus.setTextColor(RED);
                 });
             }
         });
     }
 
-    private void showBoundSessionCode(String title, String requestId, String code) {
-        String instruction = "חבר את הסשן הזה ל-Android Session Bridge עם הקוד " + code;
-        TextView body = label(
-                "Session: " + title + "\n\nקוד: " + formatPairCode(code) +
-                        "\n\nהקוד משויך רק לשיחה הזאת. האפליקציה לא שולחת אותו לצ'אט בעצמה.",
-                16, TEXT, false);
-        body.setPadding(dp(20), dp(12), dp(20), dp(8));
-        body.setTextIsSelectable(true);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("קוד חיבור ל־" + title)
-                .setView(body)
-                .setPositiveButton("העתק קוד", null)
-                .setNegativeButton("סגור", null)
-                .create();
-
-        dialog.setOnShowListener(d -> {
-            Button copy = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            copy.setTextColor(TEAL);
-            copy.setOnClickListener(v -> {
-                ClipboardManager manager =
-                        (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                if (manager != null) {
-                    manager.setPrimaryClip(ClipData.newPlainText("Session pairing code", instruction));
-                }
-                body.setText(
-                        "Session: " + title + "\n\nקוד: " + formatPairCode(code) +
-                                "\n\n✓ הוראת החיבור הועתקה. שלח אותה בשיחה הזאת.");
-            });
-        });
-        dialog.show();
-        watchSessionPairing(requestId, title);
-    }
-
-    private void watchSessionPairing(String requestId, String title) {
+    private void watchSessionPairing(String requestId, String title, boolean primary) {
         handler.postDelayed(new Runnable() {
             int attempts = 0;
             @Override public void run() {
@@ -645,16 +689,24 @@ public class MainActivity extends Activity {
                         JSONObject r = api.sessionPairStatus(id, requestId);
                         if (r.optBoolean("accepted", false)) {
                             runOnUiThread(() -> {
-                                sessionsStatus.setText("✓ „" + title + "” מחובר");
-                                sessionsStatus.setTextColor(GREEN);
+                                if (primary) {
+                                    connectionTitle.setText("✓ " + title);
+                                    connectionTitle.setTextColor(GREEN);
+                                } else {
+                                    sessionsStatus.setText("✓ „" + title + "” מחובר");
+                                    sessionsStatus.setTextColor(GREEN);
+                                }
                                 loadSessions();
                             });
                             return;
                         }
                         if (r.optBoolean("expired", false)) {
                             runOnUiThread(() -> {
-                                sessionsStatus.setText("קוד החיבור של „" + title + "” פג תוקף.");
-                                sessionsStatus.setTextColor(AMBER);
+                                String message = "קוד החיבור של „" + title + "” פג תוקף.";
+                                if (primary) connectionDetails.setText(message);
+                                else sessionsStatus.setText(message);
+                                if (primary) connectionTitle.setTextColor(AMBER);
+                                else sessionsStatus.setTextColor(AMBER);
                             });
                             return;
                         }
@@ -674,38 +726,95 @@ public class MainActivity extends Activity {
             return;
         }
 
-        int count = agentRegistryCache.length();
-        String[] titles = new String[count];
-        String[] ids = new String[count];
-        boolean[] checked = new boolean[count];
         Set<String> selected = new HashSet<>();
         JSONArray current = session.optJSONArray("agent_suite");
         if (current != null) {
             for (int i = 0; i < current.length(); i++) selected.add(current.optString(i));
         }
 
-        for (int i = 0; i < count; i++) {
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(10), dp(6), dp(10), dp(10));
+        scroll.addView(list, matchWrap());
+
+        List<CheckBox> boxes = new ArrayList<>();
+        List<String> ids = new ArrayList<>();
+
+        for (int i = 0; i < agentRegistryCache.length(); i++) {
             JSONObject agent = agentRegistryCache.optJSONObject(i);
-            ids[i] = agent == null ? "" : agent.optString("agentId", "");
-            titles[i] = agent == null ? "" :
-                    agent.optString("title", ids[i]) + " · " +
-                            agent.optString("skillVersion", "");
-            checked[i] = selected.contains(ids[i]);
+            if (agent == null || !agent.optBoolean("enabled", true)) continue;
+
+            String id = agent.optString("agentId", "");
+            if (id.isEmpty()) continue;
+            String title = agent.optString("title", id);
+            String skill = agent.optString("skillVersion", "");
+            String description = hebrewAgentDescription(agent);
+
+            LinearLayout agentCard = new LinearLayout(this);
+            agentCard.setOrientation(LinearLayout.VERTICAL);
+            agentCard.setPadding(dp(12), dp(10), dp(12), dp(10));
+            agentCard.setBackground(rounded(CARD_ALT, 14, Color.rgb(45, 104, 108)));
+
+            CheckBox cb = new CheckBox(this);
+            cb.setText(title + (skill.isEmpty() ? "" : " · " + skill));
+            cb.setTextColor(TEXT);
+            cb.setTextSize(14);
+            cb.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            cb.setChecked(selected.contains(id));
+            cb.setTag(id);
+            agentCard.addView(cb, matchWrap());
+
+            TextView desc = label(description, 12, MUTED, false);
+            desc.setLineSpacing(0f, 1.18f);
+            LinearLayout.LayoutParams descLp = matchWrap();
+            descLp.setMargins(dp(34), dp(3), dp(12), 0);
+            agentCard.addView(desc, descLp);
+
+            agentCard.setOnClickListener(v -> cb.setChecked(!cb.isChecked()));
+            addPressAnimation(agentCard);
+
+            LinearLayout.LayoutParams cardLp = matchWrap();
+            cardLp.setMargins(0, dp(5), 0, dp(5));
+            list.addView(agentCard, cardLp);
+
+            boxes.add(cb);
+            ids.add(id);
         }
 
-        new AlertDialog.Builder(this)
-                .setTitle("Agents · " + session.optString("label", "Session"))
-                .setMultiChoiceItems(titles, checked,
-                        (dialog, which, isChecked) -> checked[which] = isChecked)
-                .setPositiveButton("שמור לסשן הזה בלבד", (dialog, which) -> {
-                    JSONArray roles = new JSONArray();
-                    for (int i = 0; i < ids.length; i++) {
-                        if (checked[i] && !ids[i].isEmpty()) roles.put(ids[i]);
-                    }
-                    saveSessionAgents(session.optString("session_id", ""), roles);
-                })
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("בחירת Mini‑Agents · " + session.optString("label", "Session"))
+                .setView(scroll)
+                .setPositiveButton("שמור לסשן הזה בלבד", null)
                 .setNegativeButton("ביטול", null)
-                .show();
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            save.setTextColor(TEAL);
+            save.setOnClickListener(v -> {
+                JSONArray roles = new JSONArray();
+                for (int i = 0; i < boxes.size(); i++) {
+                    if (boxes.get(i).isChecked()) roles.put(ids.get(i));
+                }
+                saveSessionAgents(session.optString("session_id", ""), roles);
+                dialog.dismiss();
+            });
+        });
+        dialog.show();
+    }
+
+    private String hebrewAgentDescription(JSONObject agent) {
+        String id = agent.optString("agentId", "");
+        String description = agent.optString("description", "").trim();
+        if (description.matches(".*[\\u0590-\\u05FF].*")) return description;
+
+        for (int i = 0; i < AGENT_IDS.length; i++) {
+            if (AGENT_IDS[i].equals(id)) return AGENT_DESCRIPTIONS[i];
+        }
+        return description.isEmpty()
+                ? "סוכן ייעודי עם Skill וצ'קליסט נפרדים לסשן הזה."
+                : description;
     }
 
     private void saveSessionAgents(String sessionId, JSONArray roles) {
@@ -826,16 +935,25 @@ public class MainActivity extends Activity {
         });
     }
 
-    private Button compactButton(String text, int background, int stroke, int textColor) {
+    private Button compactButton(String text, boolean primary, boolean destructive) {
         Button b = new Button(this);
         b.setText(text);
-        b.setTextSize(11);
-        b.setTextColor(textColor);
+        b.setTextSize(12);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(8), dp(8), dp(8), dp(8));
-        b.setMinHeight(dp(42));
-        b.setBackground(rounded(background, 12, stroke));
+        b.setPadding(dp(8), dp(9), dp(8), dp(9));
+        b.setMinHeight(dp(44));
+
+        if (destructive) {
+            b.setTextColor(Color.rgb(254, 226, 226));
+            b.setBackground(rounded(Color.rgb(72, 24, 34), 12, RED));
+        } else if (primary) {
+            b.setTextColor(Color.rgb(6, 25, 35));
+            b.setBackground(rounded(TEAL, 12, TEAL));
+        } else {
+            b.setTextColor(TEXT);
+            b.setBackground(rounded(CARD_ALT, 12, Color.rgb(45, 104, 108)));
+        }
         addPressAnimation(b);
         return b;
     }
@@ -849,7 +967,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout.LayoutParams sessionRowLp() {
         LinearLayout.LayoutParams lp = matchWrap();
-        lp.setMargins(0, dp(7), 0, 0);
+        lp.setMargins(0, dp(9), 0, dp(2));
         return lp;
     }
 
@@ -1249,82 +1367,102 @@ public class MainActivity extends Activity {
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         boolean accessibility = isAccessibilityEnabled();
         long lastContact = DeviceIdentity.lastContact(this);
-        long age = lastContact == 0L ? Long.MAX_VALUE : System.currentTimeMillis() - lastContact;
+        long age = lastContact == 0L ? Long.MAX_VALUE :
+                System.currentTimeMillis() - lastContact;
         boolean live = id.paired && accessibility && age < 15_000L;
 
         accessibilityButton.setVisibility(accessibility ? View.GONE : View.VISIBLE);
-        closeButton.setVisibility(live ? View.VISIBLE : View.GONE);
+        closeButton.setVisibility(View.VISIBLE);
 
-        if (activePairCode != null && activePairExpiresAt > 0) {
-            long seconds = Math.max(0, (activePairExpiresAt - System.currentTimeMillis()) / 1000L);
-            if (seconds <= 0) {
-                activePairCode = null;
-                activePairRequestId = null;
-                activePairExpiresAt = 0L;
-                pairCode.setText("פג תוקף");
-                pairInstruction.setText("צור קוד חדש.");
-                connectButton.setVisibility(View.GONE);
-            } else {
-                pairInstruction.setText(
-                        "הקוד תקף עוד " + (seconds / 60) + ":" + String.format("%02d", seconds % 60) +
-                        ". לחץ „התחבר לסשן GPT”.");
+        if (!id.paired) {
+            currentSessionButton.setVisibility(View.GONE);
+            deviceDisconnectButton.setVisibility(View.GONE);
+
+            if (activePairCode != null && activePairExpiresAt > 0) {
+                long seconds = Math.max(
+                        0, (activePairExpiresAt - System.currentTimeMillis()) / 1000L);
+                if (seconds <= 0) {
+                    activePairCode = null;
+                    activePairRequestId = null;
+                    activePairExpiresAt = 0L;
+                    pairCode.setText("פג תוקף");
+                    pairInstruction.setText("צור קוד חדש.");
+                    connectButton.setVisibility(View.GONE);
+                } else {
+                    pairInstruction.setText(
+                            "קוד חיבור מכשיר · תקף עוד " +
+                                    (seconds / 60) + ":" +
+                                    String.format("%02d", seconds % 60));
+                }
             }
+
+            if (activePairCode != null) {
+                connectionTitle.setText("חיבור מכשיר חד־פעמי");
+                connectionTitle.setTextColor(TEAL);
+                connectionDetails.setText("אשר את הקוד כדי לאפשר ל־Bridge לעבוד עם המכשיר.");
+                technicalStatus.setText(accessibility
+                        ? "Accessibility פעיל"
+                        : "יש להפעיל Accessibility לפני החיבור");
+                generateCodeButton.setVisibility(View.GONE);
+                codeArea.setVisibility(View.VISIBLE);
+                connectButton.setVisibility(View.VISIBLE);
+                newCodeButton.setVisibility(View.VISIBLE);
+            } else {
+                connectionTitle.setText("המכשיר עדיין לא מחובר");
+                connectionTitle.setTextColor(MUTED);
+                connectionDetails.setText(
+                        "זהו שלב חד־פעמי. לאחריו הכפתור הראשי יחבר את סשן GPT הנוכחי.");
+                technicalStatus.setText(accessibility
+                        ? "Accessibility פעיל · מוכן לחיבור"
+                        : "שלב ראשון: הרשאת Accessibility חד־פעמית");
+                codeArea.setVisibility(View.GONE);
+                generateCodeButton.setVisibility(View.VISIBLE);
+                generateCodeButton.setEnabled(true);
+            }
+            return;
         }
 
-        if (live) {
-            connectionTitle.setText("✓ מחובר ומוכן");
+        // Device is paired. The main card now represents the Current GPT Session.
+        generateCodeButton.setVisibility(View.GONE);
+        codeArea.setVisibility(View.GONE);
+        deviceDisconnectButton.setVisibility(View.VISIBLE);
+        currentSessionButton.setVisibility(View.VISIBLE);
+
+        JSONObject current = findSessionById(currentSessionId);
+        boolean currentConnected = isSessionConnected(current);
+
+        if (currentConnected) {
+            String title = currentSessionTitle == null || currentSessionTitle.isEmpty()
+                    ? current.optString("label", "GPT Session")
+                    : currentSessionTitle;
+            connectionTitle.setText("✓ " + title);
             connectionTitle.setTextColor(GREEN);
             connectionDetails.setText(
-                    "הסשן יכול לשלוט ולבדוק את המכשיר.\n" +
-                    "אפשר לצאת מהאפליקציה — השירות ממשיך לעבוד ברקע.");
-            technicalStatus.setText(
-                    android.os.Build.MODEL + " · Accessibility פעיל · Heartbeat חי · v" +
-                            BridgeApi.APP_VERSION);
-            generateCodeButton.setVisibility(View.GONE);
-            codeArea.setVisibility(View.GONE);
-            disconnectButton.setVisibility(View.VISIBLE);
-            disconnectButton.setEnabled(true);
-        } else if (id.paired && accessibility) {
-            connectionTitle.setText("מחובר · ממתין ל־heartbeat");
-            connectionTitle.setTextColor(BLUE);
-            connectionDetails.setText("Pairing ונגישות פעילים. ממתין לקשר הבא מהסשן.");
-            technicalStatus.setText("ערוץ השליטה מאושר · Accessibility פעיל");
-            generateCodeButton.setVisibility(View.GONE);
-            codeArea.setVisibility(View.GONE);
-            disconnectButton.setVisibility(View.VISIBLE);
-            disconnectButton.setEnabled(true);
-        } else if (id.paired) {
-            connectionTitle.setText("מחובר · צריך הרשאת שליטה");
-            connectionTitle.setTextColor(AMBER);
-            connectionDetails.setText("החיבור קיים. הפעל את Accessibility פעם אחת כדי לאפשר QA ושליטה.");
-            technicalStatus.setText("Pairing פעיל · Accessibility כבוי");
-            generateCodeButton.setVisibility(View.GONE);
-            codeArea.setVisibility(View.GONE);
-            disconnectButton.setVisibility(View.VISIBLE);
-            disconnectButton.setEnabled(true);
-        } else if (activePairCode != null) {
-            connectionTitle.setText("קוד מוכן לחיבור");
-            connectionTitle.setTextColor(TEAL);
-            connectionDetails.setText("לחץ על כפתור ההתחברות שמופיע מתחת לקוד.");
-            technicalStatus.setText(accessibility
-                    ? "Accessibility פעיל · מוכן לשלוח את הקוד לסשן"
-                    : "יש להפעיל Accessibility לפני החיבור");
-            generateCodeButton.setVisibility(View.GONE);
-            codeArea.setVisibility(View.VISIBLE);
-            connectButton.setVisibility(View.VISIBLE);
-            newCodeButton.setVisibility(View.VISIBLE);
-            disconnectButton.setVisibility(View.GONE);
+                    "זהו הסשן הנוכחי המחובר למכשיר. הוא מוסתר מרשימת שאר ה־Sessions למטה.");
+            currentSessionButton.setText("התנתק מהסשן הנוכחי");
+            currentSessionButton.setTextColor(Color.rgb(254, 226, 226));
+            currentSessionButton.setBackground(
+                    rounded(Color.rgb(72, 24, 34), 14, RED));
         } else {
-            connectionTitle.setText("לא מחובר");
-            connectionTitle.setTextColor(MUTED);
-            connectionDetails.setText("צור קוד חיבור. מיד אחריו יופיע כפתור „התחבר לסשן GPT”.");
-            technicalStatus.setText(accessibility
-                    ? "Accessibility פעיל · מוכן לחיבור"
-                    : "שלב ראשון: הרשאת Accessibility חד־פעמית");
-            codeArea.setVisibility(View.GONE);
-            generateCodeButton.setVisibility(View.VISIBLE);
-            generateCodeButton.setEnabled(true);
-            disconnectButton.setVisibility(View.GONE);
+            connectionTitle.setText("הסשן הנוכחי לא מחובר");
+            connectionTitle.setTextColor(live ? TEAL : AMBER);
+            connectionDetails.setText(
+                    "פתח ב־ChatGPT את השיחה הרצויה ולחץ כאן. האפליקציה תזהה את שמה ותחבר אותה.");
+            currentSessionButton.setText("התחבר לסשן הנוכחי");
+            currentSessionButton.setTextColor(Color.rgb(6, 25, 35));
+            currentSessionButton.setBackground(rounded(TEAL, 14, TEAL));
+        }
+        addPressAnimation(currentSessionButton);
+
+        if (live) {
+            technicalStatus.setText(
+                    android.os.Build.MODEL +
+                            " · Accessibility פעיל · Heartbeat חי · v" +
+                            BridgeApi.APP_VERSION);
+        } else if (accessibility) {
+            technicalStatus.setText("המכשיר מחובר · ממתין ל־heartbeat");
+        } else {
+            technicalStatus.setText("המכשיר מחובר · Accessibility כבוי");
         }
     }
 
@@ -1410,11 +1548,18 @@ public class MainActivity extends Activity {
 
     private void addPressAnimation(View v) {
         v.setOnTouchListener((view, event) -> {
+            if (!view.isEnabled()) return false;
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                view.animate().scaleX(0.965f).scaleY(0.965f).setDuration(90L).start();
+                view.animate()
+                        .scaleX(0.96f).scaleY(0.96f)
+                        .alpha(0.72f)
+                        .setDuration(70L).start();
             } else if (event.getAction() == MotionEvent.ACTION_UP ||
                     event.getAction() == MotionEvent.ACTION_CANCEL) {
-                view.animate().scaleX(1f).scaleY(1f).setDuration(150L).start();
+                view.animate()
+                        .scaleX(1f).scaleY(1f)
+                        .alpha(1f)
+                        .setDuration(130L).start();
             }
             return false;
         });
@@ -1494,6 +1639,98 @@ public class MainActivity extends Activity {
         return code.substring(0, 3) + "  " + code.substring(3);
     }
 
+    private void beginCurrentSessionConnection() {
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        if (!id.paired) {
+            generatePairCode();
+            return;
+        }
+        if (!isAccessibilityEnabled()) {
+            showAccessibilityOnboarding(false);
+            return;
+        }
+
+        pendingCurrentSessionDiscovery = true;
+        connectionTitle.setText("מזהה את הסשן הנוכחי…");
+        connectionTitle.setTextColor(BLUE);
+        connectionDetails.setText("פותח לרגע את ChatGPT כדי לזהות בוודאות את שם השיחה הנוכחית.");
+
+        BridgeAccessibilityService.requestCurrentChatIdentity(this);
+        Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+        if (intent == null) {
+            pendingCurrentSessionDiscovery = false;
+            connectionDetails.setText("ChatGPT לא נמצא במכשיר.");
+            connectionTitle.setTextColor(RED);
+            return;
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+    }
+
+    private void continueCurrentSessionConnectionIfReady() {
+        if (!pendingCurrentSessionDiscovery) return;
+
+        String title = BridgeAccessibilityService.currentChatTitle(this);
+        String chatKey = BridgeAccessibilityService.currentChatKey(this);
+        String error = BridgeAccessibilityService.currentChatError(this);
+
+        if ((title == null || title.isEmpty()) || (chatKey == null || chatKey.isEmpty())) {
+            if (error != null && !error.isEmpty()) {
+                pendingCurrentSessionDiscovery = false;
+                connectionTitle.setText("לא הצלחתי לזהות את שם הסשן");
+                connectionTitle.setTextColor(AMBER);
+                connectionDetails.setText("נסה שוב כשהשיחה הרצויה פתוחה ב־ChatGPT.");
+            }
+            return;
+        }
+
+        pendingCurrentSessionDiscovery = false;
+        JSONArray roles = allRegistryAgentIds();
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+
+        connectionTitle.setText("מחבר את „" + title + "”…");
+        connectionTitle.setTextColor(BLUE);
+        connectionDetails.setText("ה־Bridge מזווג את השיחה הנוכחית לערוץ מבודד.");
+
+        io.execute(() -> {
+            try {
+                JSONObject result = api.beginSessionPairing(
+                        id, title, chatKey, title, roles, true);
+                if (!result.optBoolean("ok", false)) {
+                    throw new IllegalStateException(result.optString("error", "session_pair_failed"));
+                }
+                String code = result.optString("code", "");
+                String requestId = result.optString("requestId", "");
+                String instruction =
+                        "חבר את הסשן הזה ל-Android Session Bridge עם הקוד " + code;
+
+                BridgeAccessibilityService.queueMessageToChat(this, title, instruction);
+                Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+                if (intent == null) throw new IllegalStateException("ChatGPT לא נמצא במכשיר");
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+
+                runOnUiThread(() -> watchSessionPairing(requestId, title, true));
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    connectionTitle.setText("החיבור לסשן נכשל");
+                    connectionTitle.setTextColor(RED);
+                    connectionDetails.setText(safeMessage(e));
+                });
+            }
+        });
+    }
+
+    private void exitToHome() {
+        BridgeAccessibilityService.suppressAutoReturn(this, 8000L);
+        handler.removeCallbacksAndMessages(null);
+        Intent home = new Intent(Intent.ACTION_MAIN);
+        home.addCategory(Intent.CATEGORY_HOME);
+        home.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(home);
+        finishAffinity();
+    }
+
     private String safeMessage(Exception e) {
         return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
@@ -1516,6 +1753,7 @@ public class MainActivity extends Activity {
         syncPendingPairingFromStorage();
         loadAgentRegistry();
         loadSessions();
+        continueCurrentSessionConnectionIfReady();
         handler.removeCallbacks(refresher);
         handler.post(refresher);
     }
