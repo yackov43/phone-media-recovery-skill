@@ -18,7 +18,7 @@ import java.util.Iterator;
 public final class BridgeApi {
     private static final String ENDPOINT =
             "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/printmaster";
-    public static final String APP_VERSION = "0.4.0";
+    public static final String APP_VERSION = "0.4.1";
 
     private JSONObject request(String query, String method, DeviceIdentity id, JSONObject body)
             throws Exception {
@@ -71,10 +71,17 @@ public final class BridgeApi {
     }
 
     public JSONObject pairStatus(DeviceIdentity id) throws Exception {
-        return request(
-                "?android_bridge=pair_status&device_id=" +
-                        URLEncoder.encode(id.deviceId, StandardCharsets.UTF_8.name()),
-                "GET", id, null);
+        return pairStatus(id, null);
+    }
+
+    public JSONObject pairStatus(DeviceIdentity id, String requestId) throws Exception {
+        String query = "?android_bridge=pair_status&device_id=" +
+                URLEncoder.encode(id.deviceId, StandardCharsets.UTF_8.name());
+        if (requestId != null && !requestId.isEmpty()) {
+            query += "&request_id=" +
+                    URLEncoder.encode(requestId, StandardCharsets.UTF_8.name());
+        }
+        return request(query, "GET", id, null);
     }
 
     public JSONObject disconnect(DeviceIdentity id) throws Exception {
