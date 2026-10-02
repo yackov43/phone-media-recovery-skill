@@ -18,7 +18,7 @@ import java.util.Iterator;
 public final class BridgeApi {
     private static final String ENDPOINT =
             "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/printmaster";
-    public static final String APP_VERSION = "0.6.0";
+    public static final String APP_VERSION = "0.7.0";
 
     private JSONObject request(String query, String method, DeviceIdentity id, JSONObject body)
             throws Exception {
@@ -101,11 +101,52 @@ public final class BridgeApi {
     }
 
 
-    public JSONObject requestAgentRun(DeviceIdentity id, JSONArray roles) throws Exception {
-        return request("?android_bridge=agent_run_request", "POST", id,
+    public JSONObject beginSessionPairing(DeviceIdentity id, String label, JSONArray agentSuite)
+            throws Exception {
+        return request("?android_bridge=session_pair_begin", "POST", id,
                 new JSONObject()
                         .put("deviceId", id.deviceId)
-                        .put("roles", roles == null ? new JSONArray() : roles));
+                        .put("label", label == null ? "GPT Session" : label)
+                        .put("agentSuite", agentSuite == null ? new JSONArray() : agentSuite));
+    }
+
+    public JSONObject sessionPairStatus(DeviceIdentity id, String requestId) throws Exception {
+        String query = "?android_bridge=session_pair_status&device_id=" +
+                URLEncoder.encode(id.deviceId, StandardCharsets.UTF_8.name()) +
+                "&request_id=" +
+                URLEncoder.encode(requestId == null ? "" : requestId, StandardCharsets.UTF_8.name());
+        return request(query, "GET", id, null);
+    }
+
+    public JSONObject listSessions(DeviceIdentity id) throws Exception {
+        return request(
+                "?android_bridge=session_list&device_id=" +
+                        URLEncoder.encode(id.deviceId, StandardCharsets.UTF_8.name()),
+                "GET", id, null);
+    }
+
+    public JSONObject updateSession(DeviceIdentity id, String sessionId, String label,
+                                    JSONArray roles, String status) throws Exception {
+        JSONObject body = new JSONObject()
+                .put("deviceId", id.deviceId)
+                .put("sessionId", sessionId);
+        if (label != null) body.put("label", label);
+        if (roles != null) body.put("roles", roles);
+        if (status != null) body.put("status", status);
+        return request("?android_bridge=session_update", "POST", id, body);
+    }
+
+    public JSONObject requestAgentRun(DeviceIdentity id, JSONArray roles) throws Exception {
+        return requestAgentRun(id, null, roles);
+    }
+
+    public JSONObject requestAgentRun(DeviceIdentity id, String sessionId, JSONArray roles)
+            throws Exception {
+        JSONObject body = new JSONObject()
+                .put("deviceId", id.deviceId)
+                .put("roles", roles == null ? new JSONArray() : roles);
+        if (sessionId != null && !sessionId.isEmpty()) body.put("sessionId", sessionId);
+        return request("?android_bridge=agent_run_request", "POST", id, body);
     }
 
     public JSONObject poll(DeviceIdentity id) throws Exception {
