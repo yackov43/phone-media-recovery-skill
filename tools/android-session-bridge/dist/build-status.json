@@ -1,1 +1,1 @@
-{"status":"success","commit":"e3451e73a13381bb5209c1eba920ff076f701a26","run_id":"36980444718","built_at":"2026-10-02T07:48:13Z"}
+{"status":"failure","variant":"release","version":"0.2.0","commit":"718679316e02d0c13ed4f82386cfc05268e7f26a","run_id":"36980515198","built_at":"2026-10-02T07:49:15Z"}
