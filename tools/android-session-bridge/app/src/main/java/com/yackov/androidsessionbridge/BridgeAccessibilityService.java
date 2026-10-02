@@ -3,7 +3,9 @@ package com.yackov.androidsessionbridge;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -33,14 +35,29 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class BridgeAccessibilityService extends AccessibilityService {
+    private static final String LOCAL_PREFS = "bridge_local_automation";
+    private static final String KEY_PENDING_CHATGPT_MESSAGE = "pending_chatgpt_message";
+    private static final String KEY_PENDING_CHATGPT_CREATED = "pending_chatgpt_created";
+
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     private final BridgeApi api = new BridgeApi();
     private volatile boolean busy = false;
+    private volatile boolean localAutomationBusy = false;
+
+    public static void queueChatGptMessage(Context context, String message) {
+        if (context == null || message == null || message.trim().isEmpty()) return;
+        context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_PENDING_CHATGPT_MESSAGE, message.trim())
+                .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
+                .apply();
+    }
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         worker.scheduleWithFixedDelay(this::pollOnce, 250, 1200, TimeUnit.MILLISECONDS);
+        worker.schedule(this::attemptPendingChatGptMessage, 700, TimeUnit.MILLISECONDS);
     }
 
     private void pollOnce() {
@@ -409,6 +426,140 @@ public class BridgeAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event == null || event.getPackageName() == null) return;
+        if (!"com.openai.chatgpt".contentEquals(event.getPackageName())) return;
+
+        int type = event.getEventType();
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                type == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
+                type == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            worker.schedule(this::attemptPendingChatGptMessage, 350, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void attemptPendingChatGptMessage() {
+        if (localAutomationBusy) return;
+
+        SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
+        String message = prefs.getString(KEY_PENDING_CHATGPT_MESSAGE, null);
+        if (message == null || message.isEmpty()) return;
+
+        long created = prefs.getLong(KEY_PENDING_CHATGPT_CREATED, 0L);
+        if (created > 0L && System.currentTimeMillis() - created > 120_000L) {
+            prefs.edit()
+                    .remove(KEY_PENDING_CHATGPT_MESSAGE)
+                    .remove(KEY_PENDING_CHATGPT_CREATED)
+                    .apply();
+            return;
+        }
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null ||
+                !"com.openai.chatgpt".contentEquals(root.getPackageName())) {
+            return;
+        }
+
+        localAutomationBusy = true;
+        try {
+            AccessibilityNodeInfo editor = findComposer(root);
+            if (editor == null) return;
+
+            if (!setNodeText(editor, message)) return;
+
+            try {
+                Thread.sleep(260L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+
+            AccessibilityNodeInfo latestRoot = getRootInActiveWindow();
+            if (latestRoot == null) return;
+
+            AccessibilityNodeInfo send = findSendButton(latestRoot);
+            if (send == null) return;
+
+            AccessibilityNodeInfo clickable = send;
+            while (clickable != null && !clickable.isClickable()) clickable = clickable.getParent();
+
+            boolean sent = clickable != null && clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            if (!sent) {
+                Rect r = new Rect();
+                send.getBoundsInScreen(r);
+                if (!r.isEmpty()) sent = tap(r.exactCenterX(), r.exactCenterY());
+            }
+
+            if (sent) {
+                prefs.edit()
+                        .remove(KEY_PENDING_CHATGPT_MESSAGE)
+                        .remove(KEY_PENDING_CHATGPT_CREATED)
+                        .apply();
+            }
+        } finally {
+            localAutomationBusy = false;
+        }
+    }
+
+    private AccessibilityNodeInfo findComposer(AccessibilityNodeInfo root) {
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        AccessibilityNodeInfo fallback = null;
+
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.removeFirst();
+            if (n.isEditable() && n.isEnabled()) {
+                if (fallback == null) fallback = n;
+                if (n.isFocused()) return n;
+
+                String hint = "";
+                try {
+                    CharSequence h = n.getHintText();
+                    if (h != null) hint = h.toString().toLowerCase(Locale.ROOT);
+                } catch (Exception ignored) {}
+
+                String desc = n.getContentDescription() == null
+                        ? "" : n.getContentDescription().toString().toLowerCase(Locale.ROOT);
+
+                if (hint.contains("message") || hint.contains("chatgpt") ||
+                        hint.contains("הודעה") || desc.contains("message") ||
+                        desc.contains("הודעה")) {
+                    return n;
+                }
+            }
+
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return fallback;
+    }
+
+    private AccessibilityNodeInfo findSendButton(AccessibilityNodeInfo root) {
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+
+        while (!q.isEmpty()) {
+            AccessibilityNodeInfo n = q.removeFirst();
+            String text = n.getText() == null ? "" : n.getText().toString().toLowerCase(Locale.ROOT);
+            String desc = n.getContentDescription() == null
+                    ? "" : n.getContentDescription().toString().toLowerCase(Locale.ROOT);
+
+            boolean sendLike =
+                    text.equals("send") || text.equals("שלח") ||
+                    desc.equals("send") || desc.equals("שלח") ||
+                    desc.contains("send message") ||
+                    desc.contains("send prompt") ||
+                    desc.contains("שליחת הודעה");
+
+            if (sendLike && n.isEnabled()) return n;
+
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) q.add(child);
+            }
+        }
+        return null;
     }
 
     @Override
