@@ -18,7 +18,7 @@ import java.util.Iterator;
 public final class BridgeApi {
     private static final String ENDPOINT =
             "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/printmaster";
-    public static final String APP_VERSION = "0.8.0";
+    public static final String APP_VERSION = "0.9.0";
 
     private JSONObject request(String query, String method, DeviceIdentity id, JSONObject body)
             throws Exception {
@@ -111,11 +111,22 @@ public final class BridgeApi {
 
     public JSONObject beginSessionPairing(DeviceIdentity id, String label, JSONArray agentSuite)
             throws Exception {
-        return request("?android_bridge=session_pair_begin", "POST", id,
-                new JSONObject()
-                        .put("deviceId", id.deviceId)
-                        .put("label", label == null ? "GPT Session" : label)
-                        .put("agentSuite", agentSuite == null ? new JSONArray() : agentSuite));
+        return beginSessionPairing(id, label, null, null, agentSuite);
+    }
+
+    public JSONObject beginSessionPairing(
+            DeviceIdentity id,
+            String label,
+            String chatKey,
+            String chatTitle,
+            JSONArray agentSuite) throws Exception {
+        JSONObject body = new JSONObject()
+                .put("deviceId", id.deviceId)
+                .put("label", label == null ? "GPT Session" : label)
+                .put("agentSuite", agentSuite == null ? new JSONArray() : agentSuite);
+        if (chatKey != null && !chatKey.isEmpty()) body.put("chatKey", chatKey);
+        if (chatTitle != null && !chatTitle.isEmpty()) body.put("chatTitle", chatTitle);
+        return request("?android_bridge=session_pair_begin", "POST", id, body);
     }
 
     public JSONObject sessionPairStatus(DeviceIdentity id, String requestId) throws Exception {
