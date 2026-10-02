@@ -53,6 +53,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String KEY_CURRENT_CHAT_TITLE = "current_chat_title";
     private static final String KEY_CURRENT_CHAT_KEY = "current_chat_key";
     private static final String KEY_CURRENT_CHAT_ERROR = "current_chat_error";
+    private static final String KEY_SUPPRESS_BRIDGE_RETURN_UNTIL = "suppress_bridge_return_until";
 
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     private final BridgeApi api = new BridgeApi();
@@ -117,6 +118,27 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
                         .getString(KEY_CURRENT_CHAT_ERROR, null);
     }
+
+    public static void suppressAutoReturn(Context context, long millis) {
+        if (context == null) return;
+        context.getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_SUPPRESS_BRIDGE_RETURN_UNTIL,
+                        System.currentTimeMillis() + Math.max(1000L, millis))
+                .putBoolean(KEY_DISCOVERY_ACTIVE, false)
+                .putBoolean(KEY_CURRENT_CHAT_DISCOVERY, false)
+                .remove(KEY_TARGET_CHAT_TITLE)
+                .remove(KEY_TARGET_CHAT_MESSAGE)
+                .remove(KEY_TARGET_CHAT_CREATED)
+                .apply();
+    }
+
+    private boolean bridgeAutoReturnAllowed() {
+        long until = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_SUPPRESS_BRIDGE_RETURN_UNTIL, 0L);
+        return System.currentTimeMillis() >= until;
+    }
+
 
 
 
@@ -674,10 +696,12 @@ public class BridgeAccessibilityService extends AccessibilityService {
             AccessibilityNodeInfo clickable = clickableAncestor(selected);
             if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
 
-            Intent bridge = getPackageManager().getLaunchIntentForPackage(getPackageName());
-            if (bridge != null) {
-                bridge.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-                startActivity(bridge);
+            if (bridgeAutoReturnAllowed()) {
+                Intent bridge = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                if (bridge != null) {
+                    bridge.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    startActivity(bridge);
+                }
             }
         } catch (Exception e) {
             prefs.edit().putString(KEY_CURRENT_CHAT_ERROR,
@@ -847,10 +871,12 @@ public class BridgeAccessibilityService extends AccessibilityService {
                     .putString(KEY_DISCOVERY_TITLES, chats.toString())
                     .apply();
 
-            Intent bridge = getPackageManager().getLaunchIntentForPackage(getPackageName());
-            if (bridge != null) {
-                bridge.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-                startActivity(bridge);
+            if (bridgeAutoReturnAllowed()) {
+                Intent bridge = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                if (bridge != null) {
+                    bridge.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    startActivity(bridge);
+                }
             }
         } catch (Exception ignored) {
             getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE)
