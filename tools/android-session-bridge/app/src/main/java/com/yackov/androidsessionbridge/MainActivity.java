@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
     private volatile boolean serverCheckInFlight = false;
     private long lastServerCheckMs = 0L;
     private String activePairCode = null;
+    private String activePairRequestId = null;
     private long activePairExpiresAt = 0L;
 
     private final Runnable refresher = new Runnable() {
@@ -336,10 +337,12 @@ public class MainActivity extends Activity {
                     throw new IllegalStateException(r.optString("error", "pairing_failed"));
                 }
                 String code = r.optString("code", "");
+                String requestId = r.optString("requestId", "");
                 String instruction = r.optString("instruction",
                         "ב־ChatGPT כתוב: חבר את Android Session Bridge עם הקוד " + code);
                 long expiry = parseIsoMillis(r.optString("expiresAt", ""));
                 activePairCode = code;
+                activePairRequestId = requestId.isEmpty() ? null : requestId;
                 activePairExpiresAt = expiry > 0 ? expiry : System.currentTimeMillis() + 10 * 60_000L;
                 copyToClipboard("Android Session Bridge", instruction);
 
@@ -374,16 +377,34 @@ public class MainActivity extends Activity {
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         io.execute(() -> {
             try {
-                JSONObject r = api.pairStatus(id);
+                JSONObject r = api.pairStatus(id, activePairRequestId);
                 boolean paired = r.optBoolean("paired", false);
+                boolean exactRequestAccepted = activePairRequestId == null
+                        ? paired
+                        : r.optBoolean("accepted", false);
+                boolean exactRequestExpired = activePairRequestId != null
+                        && r.optBoolean("expired", false);
+
                 if (paired && !id.paired) DeviceIdentity.markPaired(this, true);
-                if (!paired && id.paired) DeviceIdentity.markDisconnected(this);
-                if (paired && activePairCode != null) {
+                if (!paired && id.paired && activePairRequestId == null) {
+                    DeviceIdentity.markDisconnected(this);
+                }
+
+                if (exactRequestAccepted && activePairCode != null) {
                     activePairCode = null;
+                    activePairRequestId = null;
                     activePairExpiresAt = 0L;
                     runOnUiThread(() -> {
                         pairCode.setText("✓ CONNECTED");
-                        pairInstruction.setText("הקוד אושר והטלפון מחובר לסשן.");
+                        pairInstruction.setText("הקוד הספציפי אושר והטלפון מחובר לסשן.");
+                    });
+                } else if (exactRequestExpired) {
+                    activePairCode = null;
+                    activePairRequestId = null;
+                    activePairExpiresAt = 0L;
+                    runOnUiThread(() -> {
+                        pairCode.setText("פג תוקף");
+                        pairInstruction.setText("קוד החיבור לא אושר בזמן. צור קוד חדש.");
                     });
                 }
             } catch (Exception ignored) {
@@ -406,6 +427,7 @@ public class MainActivity extends Activity {
                 DeviceIdentity.markDisconnected(this);
                 runOnUiThread(() -> {
                     activePairCode = null;
+                    activePairRequestId = null;
                     activePairExpiresAt = 0L;
                     pairCode.setText("— — — — — —");
                     pairInstruction.setText("החיבור נותק. צור קוד חדש כדי לחבר סשן.");
@@ -489,6 +511,7 @@ public class MainActivity extends Activity {
             long seconds = Math.max(0, (activePairExpiresAt - System.currentTimeMillis()) / 1000L);
             if (seconds <= 0) {
                 activePairCode = null;
+                activePairRequestId = null;
                 activePairExpiresAt = 0L;
                 pairCode.setText("פג תוקף");
                 pairInstruction.setText("צור קוד חדש.");
