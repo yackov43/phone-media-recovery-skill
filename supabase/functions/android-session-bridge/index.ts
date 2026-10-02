@@ -1,4 +1,3 @@
-import { registerAppTool } from "npm:@modelcontextprotocol/ext-apps@2.0.0/server";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "npm:@modelcontextprotocol/server@2.0.0";
 import { z } from "npm:zod@4.6.5";
 
@@ -824,7 +823,7 @@ function createServer(){
     {name:"android-session-bridge",title:"Android Session Bridge",version:"1.0.0"},
     {instructions:"Android Session Bridge is a standalone, session-isolated bridge between the current ChatGPT conversation and a paired Android device. Never guess a device or reuse another conversation's session. Pairing returns an exact sessionId; for every control or Mini-Agent action, always pass that exact sessionId. Physical UI access is serialized by an atomic device lease. Each logical GPT session has an independent Agent suite. Do not reveal device secrets, pairing hashes, or service credentials."}
   );
-  registerAppTool(server, "android_pair_device", {
+  server.registerTool("android_pair_device", {
     title: "Android — חבר קוד מהאפליקציה",
     description: "Accept a 6-digit pairing code generated inside Android Session Bridge. This activates that exact device for the private control bridge. Use only a code the user can see in their own app.",
     inputSchema: { code: z.string().regex(/^\\d{6}$/) },
@@ -841,7 +840,7 @@ function createServer(){
     }
   });
 
-  registerAppTool(server, "android_pair_session", {
+  server.registerTool("android_pair_session", {
     title: "Android — חבר סשן GPT",
     description: "Pair THIS ChatGPT conversation as a logical Android Bridge session using a 6-digit session code generated in the Android app. The resulting sessionId is this conversation's channel for device control and Mini-Agent runs. Multiple ChatGPT conversations may be paired to the same phone; physical UI actions are serialized by a device lease to prevent collisions.",
     inputSchema: {
@@ -861,7 +860,7 @@ function createServer(){
     }
   });
 
-  registerAppTool(server, "android_session_manager", {
+  server.registerTool("android_session_manager", {
     title: "Android — ניהול סשנים",
     description: "Manage logical GPT sessions paired to one Android device. action=list shows sessions. acquire/release controls the physical-screen lease. pause/resume/disconnect/rename update one session. Only one session may hold the physical UI lease at a time; backend-only analysis can still run concurrently.",
     inputSchema:{
@@ -916,7 +915,7 @@ function createServer(){
     return {structuredContent:{mode:"ANDROID_SESSION_UPDATED",session:rows[0]},content:[{type:"text",text:`Session updated: ${rows[0].label} (${rows[0].status}).`}]};
   });
 
-  registerAppTool(server, "android_agent_suite", {
+  server.registerTool("android_agent_suite", {
     title: "Android — צוות סוכני בדיקה",
     description: "Manage the Android Mini-Agent QA crew. These are independent role passes of the SAME GPT in the active ChatGPT session—not external OpenAI API agents and not separate API keys. Every role has a versioned, detailed Skill Contract with mission, scope, mandatory checks, evidence rules, PASS/ISSUE/BLOCKED gates, safety rules and reporting requirements. action=start creates or picks up a tracked run and returns the full Skill Contract for every enabled Mini-Agent. The assistant must execute each role as a distinct pass, follow its contract, use real Android/app/backend evidence, record findings per role with update_role, then finish the run.",
     inputSchema: {
@@ -1028,7 +1027,7 @@ function createServer(){
     return {structuredContent:{mode:"ANDROID_AGENT_RUN_FINISHED",runId,status:targetStatus},content:[{type:"text",text:`Agent run ${targetStatus}.`}]};
   });
 
-  registerAppTool(server, "android_control", {
+  server.registerTool("android_control", {
     title: "Android — שליטה חיה במכשיר",
     description: "Control the user's paired Android device through the standalone Android Session Bridge backend. Supports live screenshot, accessibility UI tree, tap, swipe, Back/Home/Recents, app launch, text input, text-target tap, and QA-image creation. This is real-device control, not a simulator.",
     inputSchema: {
