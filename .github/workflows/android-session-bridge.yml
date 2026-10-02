@@ -1,0 +1,41 @@
+name: Android Session Bridge APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools/android-session-bridge/**'
+      - '.github/workflows/android-session-bridge.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Build debug APK
+        working-directory: tools/android-session-bridge
+        run: gradle --no-daemon :app:assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-session-bridge-debug
+          path: tools/android-session-bridge/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
