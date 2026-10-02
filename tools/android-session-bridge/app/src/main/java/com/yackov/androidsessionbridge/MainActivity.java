@@ -80,6 +80,7 @@ public class MainActivity extends Activity {
     private LinearLayout codeArea;
     private LinearLayout agentRowsContainer;
     private LinearLayout sessionsRowsContainer;
+    private LinearLayout discoveredRowsContainer;
     private TextView sessionsStatus;
     private JSONArray agentRegistryCache = new JSONArray();
     private TextView connectionTitle;
@@ -292,13 +293,35 @@ public class MainActivity extends Activity {
         card.addView(label("GPT Sessions", 20, TEXT, true), matchWrap());
 
         TextView info = label(
-                "כל שיחת GPT שחיברת נשמרת כ־Session נפרד. לכל Session יש צוות Mini‑Agents משלו ותור פקודות משלו. " +
-                "המסך הפיזי מוגן ב־Lease כך ששני Sessions לא ילחצו בו זמנית.",
+                "האפליקציה סורקת את רשימת השיחות באפליקציית ChatGPT דרך Accessibility. " +
+                "לכל שיחה נשמרים שם + Bridge Chat ID, בלי לכתוב קוד בתוך השיחה. " +
+                "כל Session מחובר מקבל Agents ותור פקודות משלו.",
                 13, MUTED, false);
         info.setLineSpacing(0f, 1.2f);
         LinearLayout.LayoutParams infoLp = matchWrap();
         infoLp.setMargins(0, dp(8), 0, dp(10));
         card.addView(info, infoLp);
+
+        Button scan = actionButton("סרוק את שיחות ChatGPT", true);
+        scan.setOnClickListener(v -> scanChatGptSessions());
+        card.addView(scan, matchWrap());
+
+        TextView foundTitle = label("שיחות שהתגלו", 15, TEXT, true);
+        LinearLayout.LayoutParams foundLp = matchWrap();
+        foundLp.setMargins(0, dp(14), 0, dp(6));
+        card.addView(foundTitle, foundLp);
+
+        discoveredRowsContainer = new LinearLayout(this);
+        discoveredRowsContainer.setOrientation(LinearLayout.VERTICAL);
+        TextView discoveredLoading = label("עדיין לא בוצעה סריקה.", 12, MUTED, false);
+        discoveredLoading.setGravity(Gravity.CENTER);
+        discoveredRowsContainer.addView(discoveredLoading, matchWrap());
+        card.addView(discoveredRowsContainer, matchWrap());
+
+        TextView connectedTitle = label("Sessions מחוברים", 15, TEXT, true);
+        LinearLayout.LayoutParams connectedLp = matchWrap();
+        connectedLp.setMargins(0, dp(14), 0, dp(6));
+        card.addView(connectedTitle, connectedLp);
 
         sessionsRowsContainer = new LinearLayout(this);
         sessionsRowsContainer.setOrientation(LinearLayout.VERTICAL);
@@ -307,16 +330,10 @@ public class MainActivity extends Activity {
         sessionsRowsContainer.addView(loading, matchWrap());
         card.addView(sessionsRowsContainer, matchWrap());
 
-        Button add = actionButton("+ חבר GPT Session חדש", true);
-        add.setOnClickListener(v -> promptNewSession());
-        LinearLayout.LayoutParams addLp = matchWrap();
-        addLp.setMargins(0, dp(12), 0, 0);
-        card.addView(add, addLp);
-
-        sessionsStatus = label("Sessions רשומים נשמרים בשרת ומופיעים כאן בכל פתיחה.", 12, MUTED, false);
+        sessionsStatus = label("Discovery ו־Session Registry עובדים מאחורי הקלעים.", 12, MUTED, false);
         sessionsStatus.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams statusLp = matchWrap();
-        statusLp.setMargins(0, dp(9), 0, 0);
+        statusLp.setMargins(0, dp(10), 0, 0);
         card.addView(sessionsStatus, statusLp);
         return card;
     }
@@ -340,10 +357,136 @@ public class MainActivity extends Activity {
                 if (!response.optBoolean("ok", false) || sessions == null) {
                     throw new IllegalStateException(response.optString("error", "session_list_failed"));
                 }
-                runOnUiThread(() -> renderSessions(sessions));
+                runOnUiThread(() -> {
+                    renderSessions(sessions);
+                    loadDiscoveredChats();
+                });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     sessionsStatus.setText("שגיאת טעינת Sessions: " + safeMessage(e));
+                    sessionsStatus.setTextColor(RED);
+                });
+            }
+        });
+    }
+
+    private void scanChatGptSessions() {
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        if (!id.paired) {
+            sessionsStatus.setText("חבר קודם את המכשיר.");
+            sessionsStatus.setTextColor(AMBER);
+            return;
+        }
+        if (!isAccessibilityEnabled()) {
+            showAccessibilityOnboarding(false);
+            return;
+        }
+
+        sessionsStatus.setText("סורק את רשימת השיחות של ChatGPT…");
+        sessionsStatus.setTextColor(BLUE);
+        BridgeAccessibilityService.queueSessionDiscovery(this);
+
+        Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+        if (intent == null) {
+            sessionsStatus.setText("ChatGPT לא נמצא במכשיר.");
+            sessionsStatus.setTextColor(RED);
+            return;
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+    }
+
+    private void loadDiscoveredChats() {
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        if (!id.paired || discoveredRowsContainer == null) return;
+
+        io.execute(() -> {
+            try {
+                JSONObject response = api.listDiscoveredChats(id);
+                JSONArray chats = response.optJSONArray("chats");
+                if (!response.optBoolean("ok", false) || chats == null) {
+                    throw new IllegalStateException(response.optString("error", "discovery_list_failed"));
+                }
+                runOnUiThread(() -> renderDiscoveredChats(chats));
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    discoveredRowsContainer.removeAllViews();
+                    TextView error = label("שגיאת טעינת Discovery: " + safeMessage(e), 12, RED, false);
+                    discoveredRowsContainer.addView(error, matchWrap());
+                });
+            }
+        });
+    }
+
+    private void renderDiscoveredChats(JSONArray chats) {
+        discoveredRowsContainer.removeAllViews();
+        if (chats.length() == 0) {
+            TextView empty = label("לא נמצאו שיחות עדיין. לחץ „סרוק את שיחות ChatGPT”.", 12, MUTED, false);
+            empty.setGravity(Gravity.CENTER);
+            discoveredRowsContainer.addView(empty, matchWrap());
+            return;
+        }
+
+        for (int i = 0; i < chats.length(); i++) {
+            JSONObject chat = chats.optJSONObject(i);
+            if (chat == null) continue;
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(10), dp(9), dp(10), dp(9));
+            row.setBackground(rounded(CARD_ALT, 12, Color.rgb(35, 53, 80)));
+
+            LinearLayout copy = new LinearLayout(this);
+            copy.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams copyLp =
+                    new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+
+            String title = chat.optString("title", "GPT Session");
+            String key = chat.optString("chat_key", "");
+            copy.addView(label(title, 14, TEXT, true), matchWrap());
+            copy.addView(label(
+                    "Bridge Chat ID · " + (key.length() >= 10 ? key.substring(0, 10) : key),
+                    10, MUTED, false), matchWrap());
+            row.addView(copy, copyLp);
+
+            Button connect = smallButton("חבר");
+            connect.setOnClickListener(v -> connectDiscoveredChat(chat));
+            row.addView(connect, wrapWrap());
+
+            LinearLayout.LayoutParams rowLp = matchWrap();
+            rowLp.setMargins(0, dp(5), 0, 0);
+            discoveredRowsContainer.addView(row, rowLp);
+        }
+
+        sessionsStatus.setText("✓ נמצאו " + chats.length() + " שיחות ChatGPT ב־Discovery");
+        sessionsStatus.setTextColor(GREEN);
+    }
+
+    private void connectDiscoveredChat(JSONObject chat) {
+        String chatKey = chat.optString("chat_key", "");
+        String title = chat.optString("title", "GPT Session");
+        if (chatKey.isEmpty()) return;
+
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        JSONArray roles = selectedAgents();
+        sessionsStatus.setText("מחבר את „" + title + "” מאחורי הקלעים…");
+        sessionsStatus.setTextColor(BLUE);
+
+        io.execute(() -> {
+            try {
+                JSONObject response = api.registerDiscoveredChatSession(id, chatKey, title, roles);
+                if (!response.optBoolean("ok", false)) {
+                    throw new IllegalStateException(response.optString("error", "session_register_failed"));
+                }
+                runOnUiThread(() -> {
+                    sessionsStatus.setText("✓ „" + title + "” חובר בלי הודעת קוד בצ'אט");
+                    sessionsStatus.setTextColor(GREEN);
+                    loadSessions();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    sessionsStatus.setText("שגיאת חיבור Session: " + safeMessage(e));
                     sessionsStatus.setTextColor(RED);
                 });
             }
