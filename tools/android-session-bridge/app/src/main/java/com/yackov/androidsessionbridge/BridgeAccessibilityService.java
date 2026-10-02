@@ -63,7 +63,11 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private void pollOnce() {
         if (busy) return;
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
-        if (!id.paired) return;
+        if (!id.paired) {
+            checkPendingPairingInBackground(id);
+            id = DeviceIdentity.getOrCreate(this);
+            if (!id.paired) return;
+        }
 
         try {
             JSONObject response = api.poll(id);
