@@ -6,7 +6,11 @@ on:
     paths:
       - 'tools/android-session-bridge/**'
       - '.github/workflows/android-session-bridge.yml'
+      - '!tools/android-session-bridge/dist/**'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -30,12 +34,27 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Build debug APK
-        working-directory: tools/android-session-bridge
-        run: gradle --no-daemon :app:assembleDebug
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android-session-bridge-debug
-          path: tools/android-session-bridge/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
+      - name: Build and publish APK/status into repository
+        shell: bash
+        run: |
+          set +e
+          cd tools/android-session-bridge
+          mkdir -p dist
+          rm -f dist/android-session-bridge-debug.apk dist/build.log dist/build-status.json
+          gradle --no-daemon :app:assembleDebug > >(tee dist/build.log) 2>&1
+          BUILD_EXIT=$?
+          if [ "$BUILD_EXIT" -eq 0 ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk dist/android-session-bridge-debug.apk
+            STATUS="success"
+          else
+            STATUS="failure"
+          fi
+          printf '{"status":"%s","commit":"%s","run_id":"%s","built_at":"%s"}\n' \
+            "$STATUS" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%FT%TZ)" > dist/build-status.json
+          cd ../..
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/android-session-bridge/dist
+          git commit -m "android bridge: publish APK build [skip ci]" || true
+          git push origin HEAD:main
+          exit "$BUILD_EXIT"
