@@ -40,7 +40,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        worker.scheduleWithFixedDelay(this::pollOnce, 250, 700, TimeUnit.MILLISECONDS);
+        worker.scheduleWithFixedDelay(this::pollOnce, 250, 1200, TimeUnit.MILLISECONDS);
     }
 
     private void pollOnce() {
