@@ -13,6 +13,9 @@ public final class DeviceIdentity {
     private static final String KEY_SECRET = "device_secret";
     private static final String KEY_PAIRED = "paired";
     private static final String KEY_LAST_CONTACT = "last_contact_ms";
+    private static final String KEY_PENDING_PAIR_REQUEST = "pending_pair_request";
+    private static final String KEY_PENDING_PAIR_CODE = "pending_pair_code";
+    private static final String KEY_PENDING_PAIR_EXPIRES = "pending_pair_expires";
 
     public final String deviceId;
     public final String secret;
@@ -58,11 +61,47 @@ public final class DeviceIdentity {
                 .edit().remove(KEY_LAST_CONTACT).apply();
     }
 
+    public static void savePendingPairing(Context context, String requestId, String code, long expiresAt) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_PENDING_PAIR_REQUEST, requestId)
+                .putString(KEY_PENDING_PAIR_CODE, code)
+                .putLong(KEY_PENDING_PAIR_EXPIRES, expiresAt)
+                .apply();
+    }
+
+    public static String pendingPairRequest(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_PENDING_PAIR_REQUEST, null);
+    }
+
+    public static String pendingPairCode(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_PENDING_PAIR_CODE, null);
+    }
+
+    public static long pendingPairExpires(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_PENDING_PAIR_EXPIRES, 0L);
+    }
+
+    public static void clearPendingPairing(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .remove(KEY_PENDING_PAIR_REQUEST)
+                .remove(KEY_PENDING_PAIR_CODE)
+                .remove(KEY_PENDING_PAIR_EXPIRES)
+                .apply();
+    }
+
     public static void markDisconnected(Context context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(KEY_PAIRED, false)
                 .remove(KEY_LAST_CONTACT)
+                .remove(KEY_PENDING_PAIR_REQUEST)
+                .remove(KEY_PENDING_PAIR_CODE)
+                .remove(KEY_PENDING_PAIR_EXPIRES)
                 .apply();
     }
 }
