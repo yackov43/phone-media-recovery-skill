@@ -53,7 +53,7 @@ jobs:
           rm -f dist/Android-Session-Bridge-0.2.0-release.apk dist/build.log dist/build-status.json dist/signature.txt
 
           STORE_PASS="$(openssl rand -hex 24)"
-          KEY_PASS="$(openssl rand -hex 24)"
+          KEY_PASS="$STORE_PASS"
           KEYSTORE="$RUNNER_TEMP/android-session-bridge-release.jks"
           echo "::add-mask::$STORE_PASS"
           echo "::add-mask::$KEY_PASS"
