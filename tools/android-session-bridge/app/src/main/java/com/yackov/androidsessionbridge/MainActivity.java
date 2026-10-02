@@ -83,6 +83,7 @@ public class MainActivity extends Activity {
     private LinearLayout discoveredRowsContainer;
     private TextView sessionsStatus;
     private JSONArray agentRegistryCache = new JSONArray();
+    private JSONArray sessionsCache = new JSONArray();
     private TextView connectionTitle;
     private TextView connectionDetails;
     private TextView technicalStatus;
@@ -135,7 +136,6 @@ public class MainActivity extends Activity {
         root.addView(buildAboutCard(), cardLp());
         root.addView(buildSessionCard(), cardLp());
         root.addView(buildMultiSessionCard(), cardLp());
-        root.addView(buildAgentsCard(), cardLp());
 
         accessibilityButton = actionButton("הפעל הרשאת שליטה", false);
         accessibilityButton.setOnClickListener(v -> showAccessibilityOnboarding(false));
@@ -255,7 +255,7 @@ public class MainActivity extends Activity {
         pairInstruction.setTextIsSelectable(true);
         codeArea.addView(pairInstruction, matchWrap());
 
-        connectButton = actionButton("התחבר לסשן GPT", true);
+        connectButton = actionButton("חבר את המכשיר", true);
         connectButton.setVisibility(View.GONE);
         connectButton.setOnClickListener(v -> connectToChatGptSession());
         LinearLayout.LayoutParams connectLp = matchWrap();
@@ -275,7 +275,7 @@ public class MainActivity extends Activity {
         genLp.setMargins(0, dp(12), 0, 0);
         sessionCard.addView(generateCodeButton, genLp);
 
-        disconnectButton = actionButton("התנתק מהסשן", false);
+        disconnectButton = actionButton("נתק את המכשיר כולו", false);
         disconnectButton.setTextColor(Color.rgb(254, 202, 202));
         disconnectButton.setBackground(rounded(Color.rgb(72, 24, 34), 14, Color.rgb(127, 29, 29)));
         addPressAnimation(disconnectButton);
@@ -293,44 +293,29 @@ public class MainActivity extends Activity {
         card.addView(label("GPT Sessions", 20, TEXT, true), matchWrap());
 
         TextView info = label(
-                "האפליקציה סורקת את רשימת השיחות באפליקציית ChatGPT דרך Accessibility. " +
-                "לכל שיחה נשמרים שם + Bridge Chat ID, בלי לכתוב קוד בתוך השיחה. " +
-                "כל Session מחובר מקבל Agents ותור פקודות משלו.",
+                "כל שיחת ChatGPT היא ערוץ מבודד. לכל Session יש חיבור משלו, Agents משלו, Run-ים משלו ו־Lease משלו. " +
+                "אין צוות גלובלי ואין זליגה בין Sessions.",
                 13, MUTED, false);
         info.setLineSpacing(0f, 1.2f);
         LinearLayout.LayoutParams infoLp = matchWrap();
         infoLp.setMargins(0, dp(8), 0, dp(10));
         card.addView(info, infoLp);
 
-        Button scan = actionButton("סרוק את שיחות ChatGPT", true);
+        Button scan = actionButton("סרוק ורענן שיחות ChatGPT", true);
         scan.setOnClickListener(v -> scanChatGptSessions());
         card.addView(scan, matchWrap());
 
-        TextView foundTitle = label("שיחות שהתגלו", 15, TEXT, true);
-        LinearLayout.LayoutParams foundLp = matchWrap();
-        foundLp.setMargins(0, dp(14), 0, dp(6));
-        card.addView(foundTitle, foundLp);
-
-        discoveredRowsContainer = new LinearLayout(this);
-        discoveredRowsContainer.setOrientation(LinearLayout.VERTICAL);
-        TextView discoveredLoading = label("עדיין לא בוצעה סריקה.", 12, MUTED, false);
-        discoveredLoading.setGravity(Gravity.CENTER);
-        discoveredRowsContainer.addView(discoveredLoading, matchWrap());
-        card.addView(discoveredRowsContainer, matchWrap());
-
-        TextView connectedTitle = label("Sessions מחוברים", 15, TEXT, true);
-        LinearLayout.LayoutParams connectedLp = matchWrap();
-        connectedLp.setMargins(0, dp(14), 0, dp(6));
-        card.addView(connectedTitle, connectedLp);
-
         sessionsRowsContainer = new LinearLayout(this);
         sessionsRowsContainer.setOrientation(LinearLayout.VERTICAL);
-        TextView loading = label("טוען Sessions…", 13, MUTED, false);
+        discoveredRowsContainer = sessionsRowsContainer;
+        TextView loading = label("טוען את רשימת ה־Sessions…", 13, MUTED, false);
         loading.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams listLp = matchWrap();
+        listLp.setMargins(0, dp(12), 0, 0);
         sessionsRowsContainer.addView(loading, matchWrap());
-        card.addView(sessionsRowsContainer, matchWrap());
+        card.addView(sessionsRowsContainer, listLp);
 
-        sessionsStatus = label("Discovery ו־Session Registry עובדים מאחורי הקלעים.", 12, MUTED, false);
+        sessionsStatus = label("Session Isolation פעיל.", 12, TEAL, false);
         sessionsStatus.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams statusLp = matchWrap();
         statusLp.setMargins(0, dp(10), 0, 0);
@@ -357,10 +342,8 @@ public class MainActivity extends Activity {
                 if (!response.optBoolean("ok", false) || sessions == null) {
                     throw new IllegalStateException(response.optString("error", "session_list_failed"));
                 }
-                runOnUiThread(() -> {
-                    renderSessions(sessions);
-                    loadDiscoveredChats();
-                });
+                sessionsCache = sessions;
+                runOnUiThread(this::loadDiscoveredChats);
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     sessionsStatus.setText("שגיאת טעינת Sessions: " + safeMessage(e));
@@ -398,7 +381,7 @@ public class MainActivity extends Activity {
 
     private void loadDiscoveredChats() {
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
-        if (!id.paired || discoveredRowsContainer == null) return;
+        if (!id.paired || sessionsRowsContainer == null) return;
 
         io.execute(() -> {
             try {
@@ -407,232 +390,251 @@ public class MainActivity extends Activity {
                 if (!response.optBoolean("ok", false) || chats == null) {
                     throw new IllegalStateException(response.optString("error", "discovery_list_failed"));
                 }
-                runOnUiThread(() -> renderDiscoveredChats(chats));
+                runOnUiThread(() -> renderUnifiedSessions(chats));
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    discoveredRowsContainer.removeAllViews();
-                    TextView error = label("שגיאת טעינת Discovery: " + safeMessage(e), 12, RED, false);
-                    discoveredRowsContainer.addView(error, matchWrap());
+                    sessionsRowsContainer.removeAllViews();
+                    TextView error = label("שגיאת טעינת השיחות: " + safeMessage(e), 12, RED, false);
+                    sessionsRowsContainer.addView(error, matchWrap());
                 });
             }
         });
     }
 
-    private void renderDiscoveredChats(JSONArray chats) {
-        discoveredRowsContainer.removeAllViews();
-        if (chats.length() == 0) {
-            TextView empty = label("לא נמצאו שיחות עדיין. לחץ „סרוק את שיחות ChatGPT”.", 12, MUTED, false);
-            empty.setGravity(Gravity.CENTER);
-            discoveredRowsContainer.addView(empty, matchWrap());
-            return;
-        }
+    private void renderUnifiedSessions(JSONArray chats) {
+        sessionsRowsContainer.removeAllViews();
+        Set<String> renderedSessionIds = new HashSet<>();
 
         for (int i = 0; i < chats.length(); i++) {
             JSONObject chat = chats.optJSONObject(i);
             if (chat == null) continue;
-
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), dp(9), dp(10), dp(9));
-            row.setBackground(rounded(CARD_ALT, 12, Color.rgb(35, 53, 80)));
-
-            LinearLayout copy = new LinearLayout(this);
-            copy.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams copyLp =
-                    new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-
-            String title = chat.optString("title", "GPT Session");
-            String key = chat.optString("chat_key", "");
-            copy.addView(label(title, 14, TEXT, true), matchWrap());
-            copy.addView(label(
-                    "Bridge Chat ID · " + (key.length() >= 10 ? key.substring(0, 10) : key),
-                    10, MUTED, false), matchWrap());
-            row.addView(copy, copyLp);
-
-            Button connect = smallButton("חבר");
-            connect.setOnClickListener(v -> connectDiscoveredChat(chat));
-            row.addView(connect, wrapWrap());
-
-            LinearLayout.LayoutParams rowLp = matchWrap();
-            rowLp.setMargins(0, dp(5), 0, 0);
-            discoveredRowsContainer.addView(row, rowLp);
+            String chatKey = chat.optString("chat_key", "");
+            JSONObject session = findSessionByChatKey(chatKey);
+            if (session != null) renderedSessionIds.add(session.optString("session_id", ""));
+            sessionsRowsContainer.addView(buildUnifiedSessionRow(chat, session), sessionRowLp());
         }
 
-        sessionsStatus.setText("✓ נמצאו " + chats.length() + " שיחות ChatGPT ב־Discovery");
-        sessionsStatus.setTextColor(GREEN);
-    }
+        // Keep legacy/pre-discovery sessions visible once, without duplicating discovered rows.
+        for (int i = 0; i < sessionsCache.length(); i++) {
+            JSONObject session = sessionsCache.optJSONObject(i);
+            if (session == null) continue;
+            String sid = session.optString("session_id", "");
+            if (renderedSessionIds.contains(sid)) continue;
 
-    private void connectDiscoveredChat(JSONObject chat) {
-        String chatKey = chat.optString("chat_key", "");
-        String title = chat.optString("title", "GPT Session");
-        if (chatKey.isEmpty()) return;
-
-        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
-        JSONArray roles = selectedAgents();
-        sessionsStatus.setText("מחבר את „" + title + "” מאחורי הקלעים…");
-        sessionsStatus.setTextColor(BLUE);
-
-        io.execute(() -> {
+            JSONObject synthetic = new JSONObject();
             try {
-                JSONObject response = api.registerDiscoveredChatSession(id, chatKey, title, roles);
-                if (!response.optBoolean("ok", false)) {
-                    throw new IllegalStateException(response.optString("error", "session_register_failed"));
-                }
-                runOnUiThread(() -> {
-                    sessionsStatus.setText("✓ „" + title + "” חובר בלי הודעת קוד בצ'אט");
-                    sessionsStatus.setTextColor(GREEN);
-                    loadSessions();
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    sessionsStatus.setText("שגיאת חיבור Session: " + safeMessage(e));
-                    sessionsStatus.setTextColor(RED);
-                });
+                synthetic.put("chat_key", session.optString("chat_key", sid));
+                synthetic.put("title",
+                        session.optString("chat_title",
+                                session.optString("label", "GPT Session")));
+            } catch (Exception ignored) {
             }
-        });
-    }
+            sessionsRowsContainer.addView(buildUnifiedSessionRow(synthetic, session), sessionRowLp());
+        }
 
-    private void renderSessions(JSONArray sessions) {
-        sessionsRowsContainer.removeAllViews();
-
-        if (sessions.length() == 0) {
+        int total = Math.max(chats.length(), sessionsRowsContainer.getChildCount());
+        if (sessionsRowsContainer.getChildCount() == 0) {
             TextView empty = label(
-                    "עדיין אין GPT Sessions רשומים. פתח ב־ChatGPT את השיחה שתרצה לחבר, חזור לכאן ולחץ „חבר GPT Session חדש”.",
+                    "לא נמצאו שיחות. לחץ „סרוק ורענן שיחות ChatGPT”.",
                     13, MUTED, false);
             empty.setGravity(Gravity.CENTER);
             sessionsRowsContainer.addView(empty, matchWrap());
-            sessionsStatus.setText("0 Sessions רשומים");
+            sessionsStatus.setText("0 Sessions");
             sessionsStatus.setTextColor(MUTED);
             return;
         }
 
-        for (int i = 0; i < sessions.length(); i++) {
-            JSONObject session = sessions.optJSONObject(i);
-            if (session == null) continue;
-            sessionsRowsContainer.addView(buildSessionRow(session), sessionRowLp());
+        int connected = 0;
+        for (int i = 0; i < sessionsCache.length(); i++) {
+            JSONObject s = sessionsCache.optJSONObject(i);
+            if (isSessionConnected(s)) connected++;
         }
-
-        sessionsStatus.setText("✓ " + sessions.length() + " GPT Sessions רשומים · Scheduler פעיל");
+        sessionsStatus.setText("✓ " + total + " Sessions · " + connected +
+                " מחוברים · Session Isolation אטומי");
         sessionsStatus.setTextColor(GREEN);
     }
 
-    private View buildSessionRow(JSONObject session) {
+    private JSONObject findSessionByChatKey(String chatKey) {
+        if (chatKey == null || chatKey.isEmpty()) return null;
+        for (int i = 0; i < sessionsCache.length(); i++) {
+            JSONObject session = sessionsCache.optJSONObject(i);
+            if (session != null && chatKey.equals(session.optString("chat_key", ""))) {
+                return session;
+            }
+        }
+        return null;
+    }
+
+    private boolean isSessionConnected(JSONObject session) {
+        return session != null
+                && session.optBoolean("enabled", true)
+                && "connected".equals(session.optString("status", ""));
+    }
+
+    private View buildUnifiedSessionRow(JSONObject chat, JSONObject session) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(dp(12), dp(11), dp(12), dp(11));
-        row.setBackground(rounded(CARD_ALT, 14, Color.rgb(35, 53, 80)));
+        row.setPadding(dp(13), dp(12), dp(13), dp(12));
+        row.setBackground(rounded(CARD_ALT, 16, Color.rgb(35, 53, 80)));
 
-        String sessionId = session.optString("session_id", "");
-        String labelText = session.optString("label", "GPT Session");
-        String status = session.optString("status", "connected");
-        JSONArray roles = session.optJSONArray("agent_suite");
+        String titleText = chat.optString(
+                "title",
+                session == null ? "GPT Session" :
+                        session.optString("chat_title", session.optString("label", "GPT Session")));
+        String chatKey = chat.optString("chat_key", session == null ? "" : session.optString("chat_key", ""));
+        boolean connected = isSessionConnected(session);
+        JSONArray roles = session == null ? null : session.optJSONArray("agent_suite");
         int roleCount = roles == null ? 0 : roles.length();
+        int allAgents = agentRegistryCache == null ? 0 : agentRegistryCache.length();
 
-        TextView title = label(labelText, 16, TEXT, true);
-        row.addView(title, matchWrap());
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
 
-        int stateColor = "connected".equals(status) ? GREEN :
-                ("paused".equals(status) ? AMBER : MUTED);
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams copyLp =
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+
+        copy.addView(label(titleText, 16, TEXT, true), matchWrap());
         TextView meta = label(
-                status.toUpperCase() + " · " + roleCount + " Agents · " +
-                        (sessionId.length() >= 8 ? sessionId.substring(0, 8) : sessionId),
-                11, stateColor, false);
-        LinearLayout.LayoutParams metaLp = matchWrap();
-        metaLp.setMargins(0, dp(4), 0, dp(8));
-        row.addView(meta, metaLp);
+                (connected ? "● מחובר" : "○ מנותק") +
+                        (chatKey.isEmpty() ? "" : " · ID " + chatKey.substring(0, Math.min(10, chatKey.length()))) +
+                        (session == null ? "" : " · Agents " + roleCount + "/" + Math.max(allAgents, roleCount)),
+                11, connected ? GREEN : MUTED, false);
+        copy.addView(meta, matchWrap());
+        heading.addView(copy, copyLp);
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setGravity(Gravity.CENTER);
+        Button toggle = connected
+                ? compactButton("התנתק", Color.rgb(92, 28, 38), Color.rgb(153, 27, 27), Color.rgb(254, 202, 202))
+                : compactButton("צור קוד חיבור", Color.rgb(13, 78, 74), Color.rgb(20, 184, 166), TEXT);
+        if (connected) {
+            String sessionId = session.optString("session_id", "");
+            toggle.setOnClickListener(v -> updateSessionState(sessionId, "disconnected"));
+        } else {
+            toggle.setOnClickListener(v -> generateSessionPairCode(chat, session));
+        }
+        heading.addView(toggle, wrapWrap());
+        row.addView(heading, matchWrap());
 
-        Button agents = smallButton("Agents");
-        agents.setOnClickListener(v -> configureSessionAgents(session));
-        actions.addView(agents, weightedButtonLp());
+        if (session != null) {
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            actions.setGravity(Gravity.CENTER);
 
-        Button run = smallButton("Run");
-        run.setOnClickListener(v -> requestSessionAgentRun(session));
-        actions.addView(run, weightedButtonLp());
+            Button agents = compactButton(
+                    "Agents " + roleCount + "/" + Math.max(allAgents, roleCount),
+                    Color.rgb(28, 56, 86), Color.rgb(56, 189, 248), TEXT);
+            agents.setOnClickListener(v -> configureSessionAgents(session));
+            actions.addView(agents, weightedButtonLp());
 
-        Button state = smallButton("paused".equals(status) ? "Resume" : "Pause");
-        state.setOnClickListener(v -> updateSessionState(sessionId, "paused".equals(status) ? "connected" : "paused"));
-        actions.addView(state, weightedButtonLp());
+            Button run = compactButton(
+                    "Run",
+                    Color.rgb(22, 65, 48), Color.rgb(34, 197, 94), TEXT);
+            run.setEnabled(connected && roleCount > 0);
+            run.setAlpha(run.isEnabled() ? 1f : 0.42f);
+            run.setOnClickListener(v -> requestSessionAgentRun(session));
+            actions.addView(run, weightedButtonLp());
 
-        Button off = smallButton("Disconnect");
-        off.setOnClickListener(v -> updateSessionState(sessionId, "disconnected"));
-        actions.addView(off, weightedButtonLp());
+            Button rename = compactButton(
+                    "Rename",
+                    Color.rgb(55, 48, 82), Color.rgb(139, 92, 246), TEXT);
+            rename.setOnClickListener(v -> promptRenameSession(session));
+            actions.addView(rename, weightedButtonLp());
 
-        row.addView(actions, matchWrap());
+            LinearLayout.LayoutParams actionsLp = matchWrap();
+            actionsLp.setMargins(0, dp(10), 0, 0);
+            row.addView(actions, actionsLp);
+        }
+
         return row;
     }
 
-    private void promptNewSession() {
-        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
-        if (!id.paired) {
-            sessionsStatus.setText("חבר קודם את המכשיר.");
+    private JSONArray allRegistryAgentIds() {
+        JSONArray roles = new JSONArray();
+        if (agentRegistryCache == null) return roles;
+        for (int i = 0; i < agentRegistryCache.length(); i++) {
+            JSONObject agent = agentRegistryCache.optJSONObject(i);
+            if (agent == null || !agent.optBoolean("enabled", true)) continue;
+            String id = agent.optString("agentId", "");
+            if (!id.isEmpty()) roles.put(id);
+        }
+        return roles;
+    }
+
+    private void generateSessionPairCode(JSONObject chat, JSONObject existingSession) {
+        String chatKey = chat.optString("chat_key", "");
+        String title = chat.optString("title", "GPT Session");
+        if (chatKey.isEmpty()) {
+            sessionsStatus.setText("לשיחה הזאת עדיין אין Bridge Chat ID. בצע סריקה מחדש.");
             sessionsStatus.setTextColor(AMBER);
             return;
         }
 
-        EditText input = new EditText(this);
-        input.setHint("שם לסשן, למשל PrintMaster QA");
-        input.setTextColor(TEXT);
-        input.setHintTextColor(MUTED);
-        input.setSingleLine(true);
-        input.setPadding(dp(12), dp(8), dp(12), dp(8));
+        JSONArray roles = existingSession == null
+                ? allRegistryAgentIds()
+                : existingSession.optJSONArray("agent_suite");
+        if (roles == null || roles.length() == 0) roles = allRegistryAgentIds();
 
-        new AlertDialog.Builder(this)
-                .setTitle("חיבור GPT Session חדש")
-                .setMessage("לפני ההמשך, פתח ב־ChatGPT את השיחה שברצונך לחבר. השם כאן הוא התווית שתופיע ברשימה.")
-                .setView(input)
-                .setPositiveButton("צור קוד", (dialog, which) -> {
-                    String name = input.getText().toString().trim();
-                    if (name.isEmpty()) name = "GPT Session";
-                    beginNewSessionPairing(name);
-                })
-                .setNegativeButton("ביטול", null)
-                .show();
-    }
-
-    private void beginNewSessionPairing(String labelText) {
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
-        JSONArray defaults = selectedAgents();
-        sessionsStatus.setText("יוצר קוד לסשן " + labelText + "…");
+        final JSONArray selectedRoles = roles;
+        sessionsStatus.setText("יוצר קוד חיבור ייעודי ל־„" + title + "”…");
         sessionsStatus.setTextColor(BLUE);
 
         io.execute(() -> {
             try {
-                JSONObject r = api.beginSessionPairing(id, labelText, defaults);
-                if (!r.optBoolean("ok", false)) {
-                    throw new IllegalStateException(r.optString("error", "session_pair_failed"));
+                JSONObject result = api.beginSessionPairing(
+                        id, title, chatKey, title, selectedRoles);
+                if (!result.optBoolean("ok", false)) {
+                    throw new IllegalStateException(result.optString("error", "session_pair_failed"));
                 }
-                String code = r.optString("code", "");
-                String requestId = r.optString("requestId", "");
-                runOnUiThread(() -> showSessionPairDialog(labelText, requestId, code));
+                String code = result.optString("code", "");
+                String requestId = result.optString("requestId", "");
+                runOnUiThread(() -> showBoundSessionCode(title, requestId, code));
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    sessionsStatus.setText("שגיאת Pairing לסשן: " + safeMessage(e));
+                    sessionsStatus.setText("שגיאת יצירת קוד: " + safeMessage(e));
                     sessionsStatus.setTextColor(RED);
                 });
             }
         });
     }
 
-    private void showSessionPairDialog(String labelText, String requestId, String code) {
-        // Legacy compatibility only. We no longer inject pairing codes into ChatGPT.
-        // Session association is moving to silent ChatGPT-session discovery/registry.
-        new AlertDialog.Builder(this)
-                .setTitle("Session ממתין לזיהוי")
-                .setMessage(
-                        "הקוד הישן לא יישלח יותר לתוך השיחה. " +
-                        "האפליקציה תזהה את שיחות ChatGPT ותשייך את הערוץ מאחורי הקלעים.")
-                .setPositiveButton("אישור", null)
-                .show();
-        sessionsStatus.setText("מנגנון Pair-by-message בוטל. מחבר Session דרך Discovery.");
-        sessionsStatus.setTextColor(TEAL);
+    private void showBoundSessionCode(String title, String requestId, String code) {
+        String instruction = "חבר את הסשן הזה ל-Android Session Bridge עם הקוד " + code;
+        TextView body = label(
+                "Session: " + title + "\n\nקוד: " + formatPairCode(code) +
+                        "\n\nהקוד משויך רק לשיחה הזאת. האפליקציה לא שולחת אותו לצ'אט בעצמה.",
+                16, TEXT, false);
+        body.setPadding(dp(20), dp(12), dp(20), dp(8));
+        body.setTextIsSelectable(true);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("קוד חיבור ל־" + title)
+                .setView(body)
+                .setPositiveButton("העתק קוד", null)
+                .setNegativeButton("סגור", null)
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            Button copy = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            copy.setTextColor(TEAL);
+            copy.setOnClickListener(v -> {
+                ClipboardManager manager =
+                        (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (manager != null) {
+                    manager.setPrimaryClip(ClipData.newPlainText("Session pairing code", instruction));
+                }
+                body.setText(
+                        "Session: " + title + "\n\nקוד: " + formatPairCode(code) +
+                                "\n\n✓ הוראת החיבור הועתקה. שלח אותה בשיחה הזאת.");
+            });
+        });
+        dialog.show();
+        watchSessionPairing(requestId, title);
     }
 
-    private void watchSessionPairing(String requestId) {
+    private void watchSessionPairing(String requestId, String title) {
         handler.postDelayed(new Runnable() {
             int attempts = 0;
             @Override public void run() {
@@ -643,7 +645,7 @@ public class MainActivity extends Activity {
                         JSONObject r = api.sessionPairStatus(id, requestId);
                         if (r.optBoolean("accepted", false)) {
                             runOnUiThread(() -> {
-                                sessionsStatus.setText("✓ Session חובר בהצלחה");
+                                sessionsStatus.setText("✓ „" + title + "” מחובר");
                                 sessionsStatus.setTextColor(GREEN);
                                 loadSessions();
                             });
@@ -651,7 +653,7 @@ public class MainActivity extends Activity {
                         }
                         if (r.optBoolean("expired", false)) {
                             runOnUiThread(() -> {
-                                sessionsStatus.setText("קוד ה־Session פג תוקף.");
+                                sessionsStatus.setText("קוד החיבור של „" + title + "” פג תוקף.");
                                 sessionsStatus.setTextColor(AMBER);
                             });
                             return;
@@ -661,10 +663,11 @@ public class MainActivity extends Activity {
                     handler.postDelayed(this, 2000L);
                 });
             }
-        }, 1500L);
+        }, 1200L);
     }
 
     private void configureSessionAgents(JSONObject session) {
+        if (session == null) return;
         if (agentRegistryCache == null || agentRegistryCache.length() == 0) {
             sessionsStatus.setText("Skill Registry עדיין נטען.");
             sessionsStatus.setTextColor(AMBER);
@@ -684,16 +687,21 @@ public class MainActivity extends Activity {
         for (int i = 0; i < count; i++) {
             JSONObject agent = agentRegistryCache.optJSONObject(i);
             ids[i] = agent == null ? "" : agent.optString("agentId", "");
-            titles[i] = agent == null ? "" : agent.optString("title", ids[i]);
+            titles[i] = agent == null ? "" :
+                    agent.optString("title", ids[i]) + " · " +
+                            agent.optString("skillVersion", "");
             checked[i] = selected.contains(ids[i]);
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("Agents עבור " + session.optString("label", "Session"))
-                .setMultiChoiceItems(titles, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
-                .setPositiveButton("שמור", (dialog, which) -> {
+                .setTitle("Agents · " + session.optString("label", "Session"))
+                .setMultiChoiceItems(titles, checked,
+                        (dialog, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton("שמור לסשן הזה בלבד", (dialog, which) -> {
                     JSONArray roles = new JSONArray();
-                    for (int i = 0; i < ids.length; i++) if (checked[i] && !ids[i].isEmpty()) roles.put(ids[i]);
+                    for (int i = 0; i < ids.length; i++) {
+                        if (checked[i] && !ids[i].isEmpty()) roles.put(ids[i]);
+                    }
                     saveSessionAgents(session.optString("session_id", ""), roles);
                 })
                 .setNegativeButton("ביטול", null)
@@ -706,7 +714,7 @@ public class MainActivity extends Activity {
             try {
                 api.updateSession(id, sessionId, null, roles, null);
                 runOnUiThread(() -> {
-                    sessionsStatus.setText("✓ צוות הסוכנים של ה־Session נשמר");
+                    sessionsStatus.setText("✓ צוות הסוכנים נשמר רק ל־Session הזה");
                     sessionsStatus.setTextColor(GREEN);
                     loadSessions();
                 });
@@ -720,11 +728,19 @@ public class MainActivity extends Activity {
     }
 
     private void updateSessionState(String sessionId, String status) {
+        if (sessionId == null || sessionId.isEmpty()) return;
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         io.execute(() -> {
             try {
                 api.updateSession(id, sessionId, null, null, status);
-                runOnUiThread(this::loadSessions);
+                runOnUiThread(() -> {
+                    sessionsStatus.setText(
+                            "disconnected".equals(status)
+                                    ? "✓ ה־Session נותק וה־Lease שלו נסגר"
+                                    : "✓ מצב ה־Session עודכן");
+                    sessionsStatus.setTextColor(GREEN);
+                    loadSessions();
+                });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     sessionsStatus.setText("שגיאת Session: " + safeMessage(e));
@@ -734,19 +750,71 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void requestSessionAgentRun(JSONObject session) {
+    private void promptRenameSession(JSONObject session) {
         String sessionId = session.optString("session_id", "");
-        JSONArray roles = session.optJSONArray("agent_suite");
+        if (sessionId.isEmpty()) return;
+
+        EditText input = new EditText(this);
+        input.setText(session.optString("label", "GPT Session"));
+        input.setTextColor(TEXT);
+        input.setHintTextColor(MUTED);
+        input.setSingleLine(true);
+        input.setPadding(dp(12), dp(8), dp(12), dp(8));
+
+        new AlertDialog.Builder(this)
+                .setTitle("שנה שם תצוגה")
+                .setMessage("השם הזה שייך רק ל־Bridge ולא משנה את שם השיחה ב־ChatGPT.")
+                .setView(input)
+                .setPositiveButton("שמור", (dialog, which) -> {
+                    String name = input.getText().toString().trim();
+                    if (!name.isEmpty()) renameSession(sessionId, name);
+                })
+                .setNegativeButton("ביטול", null)
+                .show();
+    }
+
+    private void renameSession(String sessionId, String name) {
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         io.execute(() -> {
             try {
-                JSONObject run = api.requestAgentRun(id, sessionId, roles == null ? new JSONArray() : roles);
+                api.updateSession(id, sessionId, name, null, null);
+                runOnUiThread(() -> {
+                    sessionsStatus.setText("✓ שם התצוגה עודכן");
+                    sessionsStatus.setTextColor(GREEN);
+                    loadSessions();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    sessionsStatus.setText("שגיאת Rename: " + safeMessage(e));
+                    sessionsStatus.setTextColor(RED);
+                });
+            }
+        });
+    }
+
+    private void requestSessionAgentRun(JSONObject session) {
+        if (!isSessionConnected(session)) {
+            sessionsStatus.setText("ה־Session מנותק. חבר אותו לפני Run.");
+            sessionsStatus.setTextColor(AMBER);
+            return;
+        }
+        String sessionId = session.optString("session_id", "");
+        JSONArray roles = session.optJSONArray("agent_suite");
+        if (roles == null || roles.length() == 0) {
+            sessionsStatus.setText("בחר לפחות Agent אחד ל־Session הזה.");
+            sessionsStatus.setTextColor(AMBER);
+            return;
+        }
+
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        io.execute(() -> {
+            try {
+                JSONObject run = api.requestAgentRun(id, sessionId, roles);
                 String runId = run.optString("runId", "");
                 runOnUiThread(() -> {
                     sessionsStatus.setText("✓ Run " +
                             (runId.length() >= 8 ? runId.substring(0, 8) : runId) +
-                            " נוצר עבור " + session.optString("label", "Session") +
-                            ". פתח את הסשן המתאים ב־ChatGPT כדי להמשיך.");
+                            " נוצר רק עבור „" + session.optString("label", "Session") + "”");
                     sessionsStatus.setTextColor(GREEN);
                 });
             } catch (Exception e) {
@@ -758,22 +826,30 @@ public class MainActivity extends Activity {
         });
     }
 
-    private Button smallButton(String text) {
-        Button b = actionButton(text, false);
+    private Button compactButton(String text, int background, int stroke, int textColor) {
+        Button b = new Button(this);
+        b.setText(text);
         b.setTextSize(11);
-        b.setPadding(dp(4), dp(8), dp(4), dp(8));
+        b.setTextColor(textColor);
+        b.setAllCaps(false);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(8), dp(8), dp(8), dp(8));
+        b.setMinHeight(dp(42));
+        b.setBackground(rounded(background, 12, stroke));
+        addPressAnimation(b);
         return b;
     }
 
     private LinearLayout.LayoutParams weightedButtonLp() {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         lp.setMargins(dp(3), 0, dp(3), 0);
         return lp;
     }
 
     private LinearLayout.LayoutParams sessionRowLp() {
         LinearLayout.LayoutParams lp = matchWrap();
-        lp.setMargins(0, dp(6), 0, 0);
+        lp.setMargins(0, dp(7), 0, 0);
         return lp;
     }
 
@@ -830,12 +906,16 @@ public class MainActivity extends Activity {
                     throw new IllegalStateException("registry_empty");
                 }
                 agentRegistryCache = agents;
-                runOnUiThread(() -> renderAgentRegistry(agents, false));
+                runOnUiThread(() -> {
+                    if (sessionsRowsContainer != null) loadSessions();
+                });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    renderAgentRegistry(fallbackAgentRegistry(), true);
-                    agentStatus.setText("לא ניתן היה לטעון Registry חי; מוצגת רשימת fallback מקומית.");
-                    agentStatus.setTextColor(AMBER);
+                    agentRegistryCache = fallbackAgentRegistry();
+                    if (agentStatus != null) {
+                        agentStatus.setText("לא ניתן היה לטעון Registry חי; מוצגת רשימת fallback מקומית.");
+                        agentStatus.setTextColor(AMBER);
+                    }
                 });
             }
         });
