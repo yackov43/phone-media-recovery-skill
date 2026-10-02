@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 public final class BridgeApi {
     private static final String BASE = "https://dwwsjglbhzmxspjogjvq.supabase.co";
     private static final String API_KEY = "sb_publishable_ySwK4qDT578YBoXudnFNCQ_3xs3pkBx";
-    public static final String APP_VERSION = "0.1.0";
+    public static final String APP_VERSION = "0.3.0";
 
     private JSONObject postRpc(String rpc, JSONObject body) throws Exception {
         URL url = new URL(BASE + "/rest/v1/rpc/" + rpc);
