@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -20,25 +21,30 @@ public class SplashActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        getWindow().setStatusBarColor(Color.rgb(11, 18, 32));
+        getWindow().setNavigationBarColor(Color.rgb(11, 18, 32));
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(dp(28), dp(28), dp(28), dp(28));
         root.setBackgroundColor(Color.rgb(11, 18, 32));
+        root.setAlpha(0f);
 
         ImageView icon = new ImageView(this);
         icon.setImageResource(R.drawable.ic_launcher_foreground);
         GradientDrawable iconBg = new GradientDrawable();
         iconBg.setColor(Color.rgb(17, 28, 46));
-        iconBg.setCornerRadius(dp(28));
+        iconBg.setCornerRadius(dp(30));
         icon.setBackground(iconBg);
         icon.setPadding(dp(18), dp(18), dp(18), dp(18));
-        root.addView(icon, new LinearLayout.LayoutParams(dp(112), dp(112)));
+        icon.setScaleX(0.82f);
+        icon.setScaleY(0.82f);
+        root.addView(icon, new LinearLayout.LayoutParams(dp(118), dp(118)));
 
         TextView title = new TextView(this);
         title.setText("Android Session Bridge");
-        title.setTextSize(27);
+        title.setTextSize(28);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setTextColor(Color.rgb(248, 250, 252));
         title.setGravity(Gravity.CENTER);
@@ -47,15 +53,15 @@ public class SplashActivity extends Activity {
         root.addView(title, titleLp);
 
         TextView copy = new TextView(this);
-        copy.setText("גשר פרטי בין הסשן שלך ב־ChatGPT לבין הטלפון\nלבדיקות QA, שליטה, אבטחה ואוטומציה");
+        copy.setText("Private GPT Session Control\nQA · Automation · Mini‑Agents");
         copy.setTextSize(16);
         copy.setTextColor(Color.rgb(148, 163, 184));
         copy.setGravity(Gravity.CENTER);
-        copy.setLineSpacing(0f, 1.2f);
+        copy.setLineSpacing(0f, 1.18f);
         root.addView(copy, wrap());
 
         TextView secure = new TextView(this);
-        secure.setText("●  Private control channel");
+        secure.setText("●  Secure device bridge");
         secure.setTextSize(13);
         secure.setTextColor(Color.rgb(45, 212, 191));
         secure.setGravity(Gravity.CENTER);
@@ -65,10 +71,26 @@ public class SplashActivity extends Activity {
 
         setContentView(root);
 
+        root.animate()
+                .alpha(1f)
+                .setDuration(360L)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
+
+        icon.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(620L)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
+
         handler.postDelayed(() -> {
-            startActivity(new Intent(this, MainActivity.class));
-            finish();
-        }, 1400);
+            root.animate().alpha(0f).setDuration(220L).withEndAction(() -> {
+                startActivity(new Intent(this, MainActivity.class));
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                finish();
+            }).start();
+        }, 1900L);
     }
 
     private LinearLayout.LayoutParams wrap() {
