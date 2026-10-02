@@ -865,26 +865,25 @@ function createServer(){
     description: "Manage logical GPT sessions paired to one Android device. action=list shows sessions. acquire/release controls the physical-screen lease. pause/resume/disconnect/rename update one session. Only one session may hold the physical UI lease at a time; backend-only analysis can still run concurrently.",
     inputSchema:{
       action:z.enum(["list","acquire","release","pause","resume","disconnect","rename"]),
-      sessionId:z.string().uuid().optional(),
+      sessionId:z.string().uuid(),
       label:z.string().min(1).max(120).optional(),
       leaseMs:z.number().int().min(5000).max(180000).optional(),
-      deviceId:z.string().uuid().optional(),
     },
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
-  }, async ({action,sessionId,label,leaseMs,deviceId})=>{
+  }, async ({action,sessionId,label,leaseMs})=>{
+    const session=await readAndroidSession(sessionId);
+    if(!session) return {isError:true,content:[{type:"text",text:"ANDROID_SESSION_NOT_FOUND"}]};
+    const device=await readAndroidDeviceById(String(session.device_id));
+    if(!device?.enabled) return {isError:true,content:[{type:"text",text:"ANDROID_DEVICE_NOT_AVAILABLE"}]};
+
     if(action==="list"){
-      if(!deviceId) return {isError:true,content:[{type:"text",text:"ANDROID_DEVICE_ID_REQUIRED"}]};
-      const device=await readAndroidDeviceById(deviceId);
-      if(!device?.enabled) return {isError:true,content:[{type:"text",text:"ANDROID_DEVICE_NOT_AVAILABLE"}]};
       const read=await fetch(
-        `${SUPABASE_URL}/rest/v1/android_bridge_sessions?select=session_id,label,status,enabled,agent_suite,chat_key,chat_title,last_seen,last_command_at,created_at,updated_at&device_id=eq.${device.device_id}&order=created_at.asc`,
+        `${SUPABASE_URL}/rest/v1/android_bridge_sessions?select=session_id,label,status,enabled,agent_suite,chat_key,chat_title,last_seen,last_command_at,created_at,updated_at&device_id=eq.${encodeURIComponent(String(session.device_id))}&order=created_at.asc`,
         {headers:androidServiceHeaders({"Cache-Control":"no-store"})}
       );
       const rows=read.ok?await read.json():[];
-      return {structuredContent:{mode:"ANDROID_SESSION_LIST",sessions:Array.isArray(rows)?rows:[]},content:[{type:"text",text:`Android Bridge sessions: ${Array.isArray(rows)?rows.length:0}.`}]};
+      return {structuredContent:{mode:"ANDROID_SESSION_LIST",sessions:Array.isArray(rows)?rows:[]},content:[{type:"text",text:`Android Bridge sessions on this paired device: ${Array.isArray(rows)?rows.length:0}.`}]};
     }
-    if(!sessionId) return {isError:true,content:[{type:"text",text:"ANDROID_SESSION_ID_REQUIRED"}]};
-    const session=await readAndroidSession(sessionId);
     if(!session) return {isError:true,content:[{type:"text",text:"ANDROID_SESSION_NOT_FOUND"}]};
     const device=await readAndroidDeviceById(String(session.device_id));
     if(!device?.enabled) return {isError:true,content:[{type:"text",text:"ANDROID_DEVICE_NOT_AVAILABLE"}]};
@@ -911,7 +910,45 @@ function createServer(){
     );
     const rows=updated.ok?await updated.json():[];
     if(!updated.ok||!Array.isArray(rows)||!rows.length) return {isError:true,content:[{type:"text",text:"ANDROID_SESSION_UPDATE_FAILED"}]};
-    if(action==="disconnect" || action==="pause") await releaseAndroidSessionLease(sessionId);
+
+    if(action==="disconnect" || action==="pause"){
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/android_bridge_commands?session_id=eq.${encodeURIComponent(sessionId)}&status=eq.pending`,
+        {
+          method:"PATCH",
+          headers:androidServiceHeaders({Prefer:"return=minimal"}),
+          body:JSON.stringify({status:"expired",completed_at:new Date().toISOString()})
+        }
+      );
+      if(action==="disconnect"){
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/android_bridge_agent_runs?session_id=eq.${encodeURIComponent(sessionId)}&status=in.(pending,running)`,
+          {
+            method:"PATCH",
+            headers:androidServiceHeaders({Prefer:"return=minimal"}),
+            body:JSON.stringify({status:"cancelled",completed_at:new Date().toISOString()})
+          }
+        );
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/android_bridge_devices?device_id=eq.${encodeURIComponent(String(session.device_id))}&current_session_id=eq.${encodeURIComponent(sessionId)}`,
+          {
+            method:"PATCH",
+            headers:androidServiceHeaders({Prefer:"return=minimal"}),
+            body:JSON.stringify({current_session_id:null,updated_at:new Date().toISOString()})
+          }
+        );
+      }
+
+      const runningRead=await fetch(
+        `${SUPABASE_URL}/rest/v1/android_bridge_commands?select=id&session_id=eq.${encodeURIComponent(sessionId)}&status=eq.running&limit=1`,
+        {headers:androidServiceHeaders({"Cache-Control":"no-store"})}
+      );
+      const runningRows=runningRead.ok?await runningRead.json():[];
+      if(!Array.isArray(runningRows)||!runningRows.length){
+        await releaseAndroidSessionLease(sessionId);
+      }
+    }
+
     return {structuredContent:{mode:"ANDROID_SESSION_UPDATED",session:rows[0]},content:[{type:"text",text:`Session updated: ${rows[0].label} (${rows[0].status}).`}]};
   });
 
