@@ -3,8 +3,8 @@ Daemon will be stopped at the end of the build
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preReleaseBuild UP-TO-DATE
 > Task :app:javaPreCompileRelease
-> Task :app:generateReleaseResValues
 > Task :app:checkReleaseAarMetadata
+> Task :app:generateReleaseResValues
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
@@ -16,19 +16,19 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
 > Task :app:mergeReleaseJniLibFolders
-> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseNativeLibs NO-SOURCE
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:processReleaseManifestForPackage
 > Task :app:desugarReleaseFileDependencies
-> Task :app:mergeReleaseStartupProfile
 > Task :app:checkReleaseDuplicateClasses
+> Task :app:mergeReleaseStartupProfile
 > Task :app:mergeReleaseArtProfile
+> Task :app:mergeExtDexRelease
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
-> Task :app:mergeExtDexRelease
 > Task :app:mergeReleaseAssets
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
@@ -45,19 +45,19 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:dexBuilderRelease
 > Task :app:mergeReleaseGlobalSynthetics
 > Task :app:sdkReleaseDependencyData
+> Task :app:optimizeReleaseResources
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
-> Task :app:mergeDexRelease
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:mergeDexRelease
 > Task :app:compileReleaseArtProfile
-> Task :app:optimizeReleaseResources
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:lintVitalAnalyzeRelease
 > Task :app:lintVitalReportRelease
 > Task :app:lintVitalRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790948081870.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1790948147835.json
 
-BUILD SUCCESSFUL in 18s
+BUILD SUCCESSFUL in 20s
 43 actionable tasks: 43 executed
