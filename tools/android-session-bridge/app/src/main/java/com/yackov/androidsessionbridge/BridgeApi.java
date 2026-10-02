@@ -17,8 +17,8 @@ import java.util.Iterator;
 
 public final class BridgeApi {
     private static final String ENDPOINT =
-            "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/printmaster";
-    public static final String APP_VERSION = "0.9.1";
+            "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/android-session-bridge";
+    public static final String APP_VERSION = "1.0.0";
 
     private JSONObject request(String query, String method, DeviceIdentity id, JSONObject body)
             throws Exception {
@@ -120,10 +120,21 @@ public final class BridgeApi {
             String chatKey,
             String chatTitle,
             JSONArray agentSuite) throws Exception {
+        return beginSessionPairing(id, label, chatKey, chatTitle, agentSuite, false);
+    }
+
+    public JSONObject beginSessionPairing(
+            DeviceIdentity id,
+            String label,
+            String chatKey,
+            String chatTitle,
+            JSONArray agentSuite,
+            boolean isPrimary) throws Exception {
         JSONObject body = new JSONObject()
                 .put("deviceId", id.deviceId)
                 .put("label", label == null ? "GPT Session" : label)
-                .put("agentSuite", agentSuite == null ? new JSONArray() : agentSuite);
+                .put("agentSuite", agentSuite == null ? new JSONArray() : agentSuite)
+                .put("isPrimary", isPrimary);
         if (chatKey != null && !chatKey.isEmpty()) body.put("chatKey", chatKey);
         if (chatTitle != null && !chatTitle.isEmpty()) body.put("chatTitle", chatTitle);
         return request("?android_bridge=session_pair_begin", "POST", id, body);
