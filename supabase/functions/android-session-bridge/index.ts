@@ -1099,13 +1099,6 @@ Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders});
 
   const url=new URL(req.url);
-
-  const androidBridgeMode=url.searchParams.get("android_bridge");
-
-if(req.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders});
-
-  const url=new URL(req.url);
-
   const androidBridgeMode=url.searchParams.get("android_bridge");
 
   if(androidBridgeMode==="pair_begin" && req.method==="POST"){
