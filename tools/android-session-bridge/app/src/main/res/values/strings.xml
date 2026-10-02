@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Android Session Bridge</string>
+    <string name="service_description">Private bridge that lets your authorized ChatGPT session inspect and control this Android device after you enable Accessibility access.</string>
+</resources>
