@@ -154,7 +154,6 @@ public class BridgeAccessibilityService extends AccessibilityService {
         worker.scheduleWithFixedDelay(this::pollOnce, 250, 1200, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptPendingChatGptMessage, 700, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptTargetedChatMessage, 760, TimeUnit.MILLISECONDS);
-        worker.schedule(this::attemptCurrentChatDiscovery, 820, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptSessionDiscovery, 900, TimeUnit.MILLISECONDS);
     }
 
@@ -562,7 +561,6 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 type == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
             worker.schedule(this::attemptPendingChatGptMessage, 350, TimeUnit.MILLISECONDS);
             worker.schedule(this::attemptTargetedChatMessage, 390, TimeUnit.MILLISECONDS);
-            worker.schedule(this::attemptCurrentChatDiscovery, 405, TimeUnit.MILLISECONDS);
             worker.schedule(this::attemptSessionDiscovery, 420, TimeUnit.MILLISECONDS);
         }
     }
