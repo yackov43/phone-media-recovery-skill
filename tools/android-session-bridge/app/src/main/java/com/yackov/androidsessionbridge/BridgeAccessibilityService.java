@@ -43,6 +43,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String LOCAL_PREFS = "bridge_local_automation";
     private static final String KEY_PENDING_CHATGPT_MESSAGE = "pending_chatgpt_message";
     private static final String KEY_PENDING_CHATGPT_CREATED = "pending_chatgpt_created";
+    private static final String KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS = "pending_chatgpt_focus_attempts";
     private static final String KEY_DISCOVERY_ACTIVE = "discovery_active";
     private static final String KEY_DISCOVERY_PASS = "discovery_pass";
     private static final String KEY_DISCOVERY_TITLES = "discovery_titles";
@@ -68,6 +69,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .edit()
                 .putString(KEY_PENDING_CHATGPT_MESSAGE, message.trim())
                 .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
+                .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0)
                 .apply();
     }
 
@@ -377,6 +379,26 @@ public class BridgeAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
 
+        if (fieldText == null || fieldText.isEmpty()) {
+            try {
+                AccessibilityNodeInfo focused =
+                        root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                if (focused != null && setNodeText(focused, value)) return true;
+            } catch (Exception ignored) {}
+
+            try {
+                List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+                if (windows != null) {
+                    for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                        if (window == null || window.getRoot() == null) continue;
+                        AccessibilityNodeInfo focused =
+                                window.getRoot().findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                        if (focused != null && setNodeText(focused, value)) return true;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
         ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
         q.add(root);
         AccessibilityNodeInfo fallback = null;
@@ -587,66 +609,100 @@ public class BridgeAccessibilityService extends AccessibilityService {
             boolean searchMode = prefs.getBoolean(KEY_TARGET_CHAT_SEARCH_MODE, false);
             int attempts = prefs.getInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, 0);
 
-            // Search mode is intentionally handled before sidebar detection because
-            // ChatGPT's search surface is a separate Compose screen.
-            if (searchMode) {
-                AccessibilityNodeInfo target = findChatTitleNode(root, title);
-                if (target != null && openTargetChatAndQueueMessage(target, message, prefs)) return;
+            // First use semantic nodes when ChatGPT exposes them.
+            AccessibilityNodeInfo target = findChatTitleNode(root, title);
+            if (target != null && openTargetChatAndQueueMessage(target, message, prefs)) return;
 
-                // The search field is the only editable control on this surface.
-                if (attempts == 0 || attempts == 2) {
-                    setText(title, null);
+            Rect screen = new Rect();
+            root.getBoundsInScreen(screen);
+            float width = Math.max(1, screen.width());
+            float height = Math.max(1, screen.height());
+
+            if (searchMode) {
+                // Search input becomes focusable even on Compose builds whose normal
+                // conversation tree is opaque to Accessibility.
+                boolean typed = setText(title, null);
+                attempts++;
+                prefs.edit().putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, attempts).apply();
+
+                // Give ChatGPT enough time to populate results. If semantic result
+                // nodes remain hidden, select the first exact search result by the
+                // live-verified result row position.
+                if (typed && attempts >= 2) {
+                    boolean opened = tap(
+                            screen.left + width * 0.50f,
+                            screen.top + height * 0.145f);
+                    if (opened) {
+                        prefs.edit()
+                                .remove(KEY_TARGET_CHAT_TITLE)
+                                .remove(KEY_TARGET_CHAT_MESSAGE)
+                                .remove(KEY_TARGET_CHAT_CREATED)
+                                .remove(KEY_TARGET_CHAT_SEARCH_MODE)
+                                .remove(KEY_TARGET_CHAT_SEARCH_ATTEMPTS)
+                                .putString(KEY_PENDING_CHATGPT_MESSAGE, message)
+                                .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
+                                .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0)
+                                .apply();
+                        worker.schedule(this::attemptPendingChatGptMessage, 850, TimeUnit.MILLISECONDS);
+                        return;
+                    }
                 }
 
-                attempts++;
                 if (attempts >= 8) {
                     clearTargetedChatRequest(prefs);
                     return;
                 }
-                prefs.edit().putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, attempts).apply();
-                worker.schedule(this::attemptTargetedChatMessage, 450, TimeUnit.MILLISECONDS);
+                worker.schedule(this::attemptTargetedChatMessage, 500, TimeUnit.MILLISECONDS);
                 return;
             }
 
-            if (!looksLikeChatSidebar(root)) {
+            // App-only navigation contract: the user never has to open the sidebar.
+            // First invocation starts from the last active ChatGPT conversation.
+            if (attempts == 0) {
                 AccessibilityNodeInfo opener = findSidebarOpener(root);
+                boolean opened = false;
                 if (opener != null) {
                     AccessibilityNodeInfo clickable = clickableAncestor(opener);
-                    if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    worker.schedule(this::attemptTargetedChatMessage, 520, TimeUnit.MILLISECONDS);
+                    opened = clickable != null &&
+                            clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                 }
+                if (!opened) {
+                    // Verified on the current ChatGPT Android Compose layout.
+                    opened = tap(
+                            screen.left + width * 0.895f,
+                            screen.top + height * 0.072f);
+                }
+                prefs.edit().putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, 1).apply();
+                worker.schedule(this::attemptTargetedChatMessage, 650, TimeUnit.MILLISECONDS);
                 return;
             }
 
-            AccessibilityNodeInfo target = findChatTitleNode(root, title);
-            if (target != null && openTargetChatAndQueueMessage(target, message, prefs)) return;
+            // Sidebar is now expected to be open. Prefer its semantic Search control,
+            // then use the live-verified Search-button coordinate when Compose hides it.
+            boolean searchOpened =
+                    clickText("חיפוש", true) || clickText("Search", true);
+            if (!searchOpened) {
+                searchOpened = tap(
+                        screen.left + width * 0.32f,
+                        screen.top + height * 0.075f);
+            }
 
-            // ChatGPT's Compose sidebar can expose the Search control while hiding
-            // individual off-screen chat title nodes. Use Search instead of endlessly
-            // scrolling the sidebar. This path is verified on the live Android app.
-            boolean searchOpened = clickText("חיפוש", true) || clickText("Search", true);
             if (searchOpened) {
                 prefs.edit()
                         .putBoolean(KEY_TARGET_CHAT_SEARCH_MODE, true)
                         .putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, 0)
                         .apply();
-                worker.schedule(this::attemptTargetedChatMessage, 420, TimeUnit.MILLISECONDS);
+                worker.schedule(this::attemptTargetedChatMessage, 700, TimeUnit.MILLISECONDS);
                 return;
             }
 
-            // Small bounded fallback for layouts where Search is temporarily absent.
             attempts++;
-            if (attempts <= 3) {
-                prefs.edit().putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, attempts).apply();
-                AccessibilityNodeInfo scrollable = findLargestScrollable(root);
-                if (scrollable != null &&
-                        scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
-                    worker.schedule(this::attemptTargetedChatMessage, 430, TimeUnit.MILLISECONDS);
-                    return;
-                }
+            if (attempts >= 4) {
+                clearTargetedChatRequest(prefs);
+                return;
             }
-
-            clearTargetedChatRequest(prefs);
+            prefs.edit().putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, attempts).apply();
+            worker.schedule(this::attemptTargetedChatMessage, 550, TimeUnit.MILLISECONDS);
         } finally {
             localAutomationBusy = false;
         }
@@ -672,6 +728,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .remove(KEY_TARGET_CHAT_SEARCH_ATTEMPTS)
                 .putString(KEY_PENDING_CHATGPT_MESSAGE, message)
                 .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
+                .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0)
                 .apply();
 
         worker.schedule(this::attemptPendingChatGptMessage, 650, TimeUnit.MILLISECONDS);
@@ -700,6 +757,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
             prefs.edit()
                     .remove(KEY_PENDING_CHATGPT_MESSAGE)
                     .remove(KEY_PENDING_CHATGPT_CREATED)
+                    .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS)
                     .apply();
             return;
         }
@@ -713,12 +771,32 @@ public class BridgeAccessibilityService extends AccessibilityService {
         localAutomationBusy = true;
         try {
             AccessibilityNodeInfo editor = findComposer(root);
-            if (editor == null) return;
 
+            // Compose may hide the editor until it receives a real touch. The
+            // composer center was verified live; focus it and retry automatically.
+            if (editor == null) {
+                int focusAttempts = prefs.getInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0);
+                if (focusAttempts >= 4) return;
+
+                Rect screen = new Rect();
+                root.getBoundsInScreen(screen);
+                float width = Math.max(1, screen.width());
+                float height = Math.max(1, screen.height());
+                tap(
+                        screen.left + width * 0.50f,
+                        screen.top + height * 0.900f);
+                prefs.edit()
+                        .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, focusAttempts + 1)
+                        .apply();
+                worker.schedule(this::attemptPendingChatGptMessage, 450, TimeUnit.MILLISECONDS);
+                return;
+            }
+
+            prefs.edit().putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0).apply();
             if (!setNodeText(editor, message)) return;
 
             try {
-                Thread.sleep(260L);
+                Thread.sleep(320L);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
@@ -727,22 +805,62 @@ public class BridgeAccessibilityService extends AccessibilityService {
             if (latestRoot == null) return;
 
             AccessibilityNodeInfo send = findSendButton(latestRoot);
-            if (send == null) return;
+            boolean sent = false;
+            if (send != null) {
+                AccessibilityNodeInfo clickable = send;
+                while (clickable != null && !clickable.isClickable()) {
+                    clickable = clickable.getParent();
+                }
+                sent = clickable != null &&
+                        clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                if (!sent) {
+                    Rect r = new Rect();
+                    send.getBoundsInScreen(r);
+                    if (!r.isEmpty()) sent = tap(r.exactCenterX(), r.exactCenterY());
+                }
+            }
 
-            AccessibilityNodeInfo clickable = send;
-            while (clickable != null && !clickable.isClickable()) clickable = clickable.getParent();
-
-            boolean sent = clickable != null && clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            // Compose 2026 fallback: after the editor is focused, Gboard is visible
+            // but the Send node can still be omitted from the accessibility tree.
+            // Derive the send-arrow Y from the IME top and use RTL/LTR X.
             if (!sent) {
-                Rect r = new Rect();
-                send.getBoundsInScreen(r);
-                if (!r.isEmpty()) sent = tap(r.exactCenterX(), r.exactCenterY());
+                Rect screen = new Rect();
+                latestRoot.getBoundsInScreen(screen);
+                int keyboardTop = -1;
+                try {
+                    List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+                    if (windows != null) {
+                        for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                            if (window != null &&
+                                    window.getType() ==
+                                            android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                                Rect kb = new Rect();
+                                window.getBoundsInScreen(kb);
+                                if (!kb.isEmpty()) {
+                                    keyboardTop = kb.top;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                boolean rtl = getResources().getConfiguration().getLayoutDirection() ==
+                        android.view.View.LAYOUT_DIRECTION_RTL;
+                float sendX = rtl
+                        ? screen.left + screen.width() * 0.10f
+                        : screen.right - screen.width() * 0.10f;
+                float sendY = keyboardTop > 0
+                        ? keyboardTop - Math.max(90f, screen.height() * 0.044f)
+                        : screen.top + screen.height() * 0.59f;
+                sent = tap(sendX, sendY);
             }
 
             if (sent) {
                 prefs.edit()
                         .remove(KEY_PENDING_CHATGPT_MESSAGE)
                         .remove(KEY_PENDING_CHATGPT_CREATED)
+                        .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS)
                         .apply();
             }
         } finally {
@@ -1087,6 +1205,24 @@ public class BridgeAccessibilityService extends AccessibilityService {
     }
 
     private AccessibilityNodeInfo findComposer(AccessibilityNodeInfo root) {
+        try {
+            AccessibilityNodeInfo focused =
+                    root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focused != null && focused.isEnabled()) return focused;
+        } catch (Exception ignored) {}
+
+        try {
+            List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+            if (windows != null) {
+                for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                    if (window == null || window.getRoot() == null) continue;
+                    AccessibilityNodeInfo focused =
+                            window.getRoot().findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                    if (focused != null && focused.isEnabled()) return focused;
+                }
+            }
+        } catch (Exception ignored) {}
+
         ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
         q.add(root);
         AccessibilityNodeInfo fallback = null;
