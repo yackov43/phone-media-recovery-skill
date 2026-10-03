@@ -49,6 +49,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String KEY_TARGET_CHAT_TITLE = "target_chat_title";
     private static final String KEY_TARGET_CHAT_MESSAGE = "target_chat_message";
     private static final String KEY_TARGET_CHAT_CREATED = "target_chat_created";
+    private static final String KEY_TARGET_CHAT_SEARCH_MODE = "target_chat_search_mode";
+    private static final String KEY_TARGET_CHAT_SEARCH_ATTEMPTS = "target_chat_search_attempts";
     private static final String KEY_CURRENT_CHAT_DISCOVERY = "current_chat_discovery";
     private static final String KEY_CURRENT_CHAT_TITLE = "current_chat_title";
     private static final String KEY_CURRENT_CHAT_KEY = "current_chat_key";
@@ -87,6 +89,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .putString(KEY_TARGET_CHAT_TITLE, title.trim())
                 .putString(KEY_TARGET_CHAT_MESSAGE, message.trim())
                 .putLong(KEY_TARGET_CHAT_CREATED, System.currentTimeMillis())
+                .putBoolean(KEY_TARGET_CHAT_SEARCH_MODE, false)
+                .putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, 0)
                 .apply();
     }
 
@@ -130,6 +134,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .remove(KEY_TARGET_CHAT_TITLE)
                 .remove(KEY_TARGET_CHAT_MESSAGE)
                 .remove(KEY_TARGET_CHAT_CREATED)
+                .remove(KEY_TARGET_CHAT_SEARCH_MODE)
+                .remove(KEY_TARGET_CHAT_SEARCH_ATTEMPTS)
                 .apply();
     }
 
@@ -570,11 +576,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
 
         long created = prefs.getLong(KEY_TARGET_CHAT_CREATED, 0L);
         if (created > 0L && System.currentTimeMillis() - created > 120_000L) {
-            prefs.edit()
-                    .remove(KEY_TARGET_CHAT_TITLE)
-                    .remove(KEY_TARGET_CHAT_MESSAGE)
-                    .remove(KEY_TARGET_CHAT_CREATED)
-                    .apply();
+            clearTargetedChatRequest(prefs);
             return;
         }
 
@@ -584,6 +586,30 @@ public class BridgeAccessibilityService extends AccessibilityService {
 
         localAutomationBusy = true;
         try {
+            boolean searchMode = prefs.getBoolean(KEY_TARGET_CHAT_SEARCH_MODE, false);
+            int attempts = prefs.getInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, 0);
+
+            // Search mode is intentionally handled before sidebar detection because
+            // ChatGPT's search surface is a separate Compose screen.
+            if (searchMode) {
+                AccessibilityNodeInfo target = findChatTitleNode(root, title);
+                if (target != null && openTargetChatAndQueueMessage(target, message, prefs)) return;
+
+                // The search field is the only editable control on this surface.
+                if (attempts == 0 || attempts == 2) {
+                    setText(title, null);
+                }
+
+                attempts++;
+                if (attempts >= 8) {
+                    clearTargetedChatRequest(prefs);
+                    return;
+                }
+                prefs.edit().putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, attempts).apply();
+                worker.schedule(this::attemptTargetedChatMessage, 450, TimeUnit.MILLISECONDS);
+                return;
+            }
+
             if (!looksLikeChatSidebar(root)) {
                 AccessibilityNodeInfo opener = findSidebarOpener(root);
                 if (opener != null) {
@@ -595,120 +621,73 @@ public class BridgeAccessibilityService extends AccessibilityService {
             }
 
             AccessibilityNodeInfo target = findChatTitleNode(root, title);
-            if (target == null) {
+            if (target != null && openTargetChatAndQueueMessage(target, message, prefs)) return;
+
+            // ChatGPT's Compose sidebar can expose the Search control while hiding
+            // individual off-screen chat title nodes. Use Search instead of endlessly
+            // scrolling the sidebar. This path is verified on the live Android app.
+            boolean searchOpened = clickText("חיפוש", true) || clickText("Search", true);
+            if (searchOpened) {
+                prefs.edit()
+                        .putBoolean(KEY_TARGET_CHAT_SEARCH_MODE, true)
+                        .putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, 0)
+                        .apply();
+                worker.schedule(this::attemptTargetedChatMessage, 420, TimeUnit.MILLISECONDS);
+                return;
+            }
+
+            // Small bounded fallback for layouts where Search is temporarily absent.
+            attempts++;
+            if (attempts <= 3) {
+                prefs.edit().putInt(KEY_TARGET_CHAT_SEARCH_ATTEMPTS, attempts).apply();
                 AccessibilityNodeInfo scrollable = findLargestScrollable(root);
                 if (scrollable != null &&
                         scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
                     worker.schedule(this::attemptTargetedChatMessage, 430, TimeUnit.MILLISECONDS);
+                    return;
                 }
-                return;
             }
 
-            AccessibilityNodeInfo clickable = clickableAncestor(target);
-            boolean opened = clickable != null &&
-                    clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            if (!opened) {
-                Rect r = new Rect();
-                target.getBoundsInScreen(r);
-                if (!r.isEmpty()) opened = tap(r.exactCenterX(), r.exactCenterY());
-            }
-            if (!opened) return;
-
-            prefs.edit()
-                    .remove(KEY_TARGET_CHAT_TITLE)
-                    .remove(KEY_TARGET_CHAT_MESSAGE)
-                    .remove(KEY_TARGET_CHAT_CREATED)
-                    .putString(KEY_PENDING_CHATGPT_MESSAGE, message)
-                    .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
-                    .apply();
-
-            worker.schedule(this::attemptPendingChatGptMessage, 650, TimeUnit.MILLISECONDS);
+            clearTargetedChatRequest(prefs);
         } finally {
             localAutomationBusy = false;
         }
     }
 
-    private void attemptCurrentChatDiscovery() {
-        if (localAutomationBusy) return;
-        SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
-        if (!prefs.getBoolean(KEY_CURRENT_CHAT_DISCOVERY, false)) return;
-
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null || root.getPackageName() == null ||
-                !"com.openai.chatgpt".contentEquals(root.getPackageName())) return;
-
-        localAutomationBusy = true;
-        try {
-            if (!looksLikeChatSidebar(root)) {
-                AccessibilityNodeInfo opener = findSidebarOpener(root);
-                if (opener != null) {
-                    AccessibilityNodeInfo clickable = clickableAncestor(opener);
-                    if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    worker.schedule(this::attemptCurrentChatDiscovery, 550, TimeUnit.MILLISECONDS);
-                } else {
-                    prefs.edit().putString(KEY_CURRENT_CHAT_ERROR, "SIDEBAR_OPENER_NOT_FOUND").apply();
-                }
-                return;
-            }
-
-            AccessibilityNodeInfo selected = findSelectedChatTitleNode(root);
-            if (selected == null) {
-                prefs.edit().putString(KEY_CURRENT_CHAT_ERROR, "CURRENT_CHAT_NOT_IDENTIFIED").apply();
-                return;
-            }
-
-            String title = normalizeChatTitle(String.valueOf(selected.getText()));
-            if (title.isEmpty()) {
-                prefs.edit().putString(KEY_CURRENT_CHAT_ERROR, "CURRENT_CHAT_TITLE_EMPTY").apply();
-                return;
-            }
-
-            LinkedHashSet<String> known = readSavedDiscoveryTitles(prefs);
-            int ordinal = 1;
-            int index = 0;
-            for (String item : known) {
-                index++;
-                if (normalizeChatTitle(item).equals(title)) {
-                    ordinal = index;
-                    break;
-                }
-            }
-            String key = stableChatKey(title, ordinal);
-
-            prefs.edit()
-                    .putBoolean(KEY_CURRENT_CHAT_DISCOVERY, false)
-                    .putString(KEY_CURRENT_CHAT_TITLE, title)
-                    .putString(KEY_CURRENT_CHAT_KEY, key)
-                    .remove(KEY_CURRENT_CHAT_ERROR)
-                    .apply();
-
-            DeviceIdentity id = DeviceIdentity.getOrCreate(this);
-            if (id.paired) {
-                JSONArray one = new JSONArray();
-                one.put(new JSONObject()
-                        .put("chatKey", key)
-                        .put("title", title)
-                        .put("ordinal", ordinal)
-                        .put("visibleAtSync", true));
-                api.syncDiscoveredChats(id, one);
-            }
-
-            AccessibilityNodeInfo clickable = clickableAncestor(selected);
-            if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-
-            if (bridgeAutoReturnAllowed()) {
-                Intent bridge = getPackageManager().getLaunchIntentForPackage(getPackageName());
-                if (bridge != null) {
-                    bridge.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-                    startActivity(bridge);
-                }
-            }
-        } catch (Exception e) {
-            prefs.edit().putString(KEY_CURRENT_CHAT_ERROR,
-                    "CURRENT_CHAT_DISCOVERY_FAILED:" + e.getClass().getSimpleName()).apply();
-        } finally {
-            localAutomationBusy = false;
+    private boolean openTargetChatAndQueueMessage(
+            AccessibilityNodeInfo target, String message, SharedPreferences prefs) {
+        AccessibilityNodeInfo clickable = clickableAncestor(target);
+        boolean opened = clickable != null &&
+                clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        if (!opened) {
+            Rect r = new Rect();
+            target.getBoundsInScreen(r);
+            if (!r.isEmpty()) opened = tap(r.exactCenterX(), r.exactCenterY());
         }
+        if (!opened) return false;
+
+        prefs.edit()
+                .remove(KEY_TARGET_CHAT_TITLE)
+                .remove(KEY_TARGET_CHAT_MESSAGE)
+                .remove(KEY_TARGET_CHAT_CREATED)
+                .remove(KEY_TARGET_CHAT_SEARCH_MODE)
+                .remove(KEY_TARGET_CHAT_SEARCH_ATTEMPTS)
+                .putString(KEY_PENDING_CHATGPT_MESSAGE, message)
+                .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
+                .apply();
+
+        worker.schedule(this::attemptPendingChatGptMessage, 650, TimeUnit.MILLISECONDS);
+        return true;
+    }
+
+    private void clearTargetedChatRequest(SharedPreferences prefs) {
+        prefs.edit()
+                .remove(KEY_TARGET_CHAT_TITLE)
+                .remove(KEY_TARGET_CHAT_MESSAGE)
+                .remove(KEY_TARGET_CHAT_CREATED)
+                .remove(KEY_TARGET_CHAT_SEARCH_MODE)
+                .remove(KEY_TARGET_CHAT_SEARCH_ATTEMPTS)
+                .apply();
     }
 
     private void attemptPendingChatGptMessage() {
