@@ -705,7 +705,9 @@ public class MainActivity extends Activity {
                 String code = result.optString("code", "");
                 String requestId = result.optString("requestId", "");
                 String instruction =
-                        "חבר את הסשן הזה ל-Android Session Bridge עם הקוד " + code;
+                        "@Android Session Bridge חבר את הסשן הזה דרך אפליקציית Android Session Bridge + MCP עם הקוד " +
+                        code +
+                        ". לאחר החיבור הצג כאן אישור ברור שהחיבור הצליח ואת רשימת ה-Mini-Agents הפעילים.";
 
                 BridgeAccessibilityService.queueMessageToChat(
                         this, title, instruction);
@@ -1719,21 +1721,67 @@ public class MainActivity extends Activity {
             return;
         }
 
-        pendingCurrentSessionDiscovery = true;
-        connectionTitle.setText("מזהה את הסשן הנוכחי…");
-        connectionTitle.setTextColor(BLUE);
-        connectionDetails.setText("פותח לרגע את ChatGPT כדי לזהות בוודאות את שם השיחה הנוכחית.");
+        // IMPORTANT: Current Session must never open ChatGPT's sidebar.
+        // ChatGPT is launched with REORDER_TO_FRONT, so it returns to the exact
+        // conversation that was last active. The pairing message is injected
+        // directly into that conversation's composer.
+        pendingCurrentSessionDiscovery = false;
+        JSONArray roles = allRegistryAgentIds();
 
-        BridgeAccessibilityService.requestCurrentChatIdentity(this);
-        Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
-        if (intent == null) {
-            pendingCurrentSessionDiscovery = false;
-            connectionDetails.setText("ChatGPT לא נמצא במכשיר.");
-            connectionTitle.setTextColor(RED);
-            return;
-        }
-        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
+        connectionTitle.setText("מחבר את הסשן הנוכחי…");
+        connectionTitle.setTextColor(BLUE);
+        connectionDetails.setText(
+                "חוזר ישירות לשיחה הפתוחה ב־ChatGPT ומבצע Pairing דרך MCP — בלי לפתוח את רשימת השיחות.");
+
+        io.execute(() -> {
+            try {
+                JSONObject result = api.beginSessionPairing(
+                        id,
+                        "Current GPT Session",
+                        null,
+                        "Current GPT Session",
+                        roles,
+                        true);
+                if (!result.optBoolean("ok", false)) {
+                    throw new IllegalStateException(
+                            result.optString("error", "session_pair_failed"));
+                }
+
+                String code = result.optString("code", "");
+                String requestId = result.optString("requestId", "");
+                if (code.isEmpty() || requestId.isEmpty()) {
+                    throw new IllegalStateException("session_pair_context_missing");
+                }
+
+                String instruction =
+                        "@Android Session Bridge חבר את השיחה הנוכחית דרך אפליקציית Android Session Bridge + MCP עם הקוד " +
+                        code +
+                        ". לאחר החיבור הצג כאן אישור ברור שהחיבור הצליח ואת רשימת ה-Mini-Agents הפעילים.";
+
+                BridgeAccessibilityService.queueChatGptMessage(this, instruction);
+
+                Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+                if (intent == null) {
+                    throw new IllegalStateException("ChatGPT לא נמצא במכשיר");
+                }
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+
+                runOnUiThread(() -> {
+                    connectionTitle.setText("ממתין לאישור MCP בתוך השיחה…");
+                    connectionTitle.setTextColor(BLUE);
+                    connectionDetails.setText(
+                            "השיחה עצמה תאשר את החיבור ותציג את ה־Session ואת רשימת ה־Mini-Agents.");
+                    watchSessionPairing(requestId, "Current GPT Session", true);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    connectionTitle.setText("החיבור לסשן נכשל");
+                    connectionTitle.setTextColor(RED);
+                    connectionDetails.setText(safeMessage(e));
+                });
+            }
+        });
     }
 
     private void continueCurrentSessionConnectionIfReady() {
@@ -1771,7 +1819,9 @@ public class MainActivity extends Activity {
                 String code = result.optString("code", "");
                 String requestId = result.optString("requestId", "");
                 String instruction =
-                        "חבר את הסשן הזה ל-Android Session Bridge עם הקוד " + code;
+                        "@Android Session Bridge חבר את הסשן הזה דרך אפליקציית Android Session Bridge + MCP עם הקוד " +
+                        code +
+                        ". לאחר החיבור הצג כאן אישור ברור שהחיבור הצליח ואת רשימת ה-Mini-Agents הפעילים.";
 
                 BridgeAccessibilityService.queueMessageToChat(this, title, instruction);
                 Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
