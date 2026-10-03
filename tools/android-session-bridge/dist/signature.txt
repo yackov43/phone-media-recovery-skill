@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): false
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=Android Session Bridge, OU=Private QA, O=Yackov43, C=IL
+Signer #1 certificate SHA-256 digest: 0ba0daaed29448d664273e00922ae8a4cf63f0f5c02f8efa153cf15d96febb36
+Signer #1 certificate SHA-1 digest: 508cc0184f4b1cd585c6d8eb3858aad351790f9b
+Signer #1 certificate MD5 digest: 807fff84a39cba364e744d72d0ffe72a
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 3072
+Signer #1 public key SHA-256 digest: 16ba07cd800a73b61ca056c90ee394f8009dbc25b4f35dd48df6576a19a134ec
+Signer #1 public key SHA-1 digest: d992e26730f6feba0d1d8b6207f1e53d98d113a1
+Signer #1 public key MD5 digest: abc2e0efb09b24df653db161b7516863
