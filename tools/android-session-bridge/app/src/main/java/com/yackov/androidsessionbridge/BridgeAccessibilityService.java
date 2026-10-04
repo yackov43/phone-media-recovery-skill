@@ -42,6 +42,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class BridgeAccessibilityService extends AccessibilityService {
     private static final String LOCAL_PREFS = "bridge_local_automation";
+    private static final String KEY_AUTOMATION_SCHEMA_VERSION = "automation_schema_version";
+    private static final int AUTOMATION_SCHEMA_VERSION = 2;
     private static final String KEY_PENDING_CHATGPT_MESSAGE = "pending_chatgpt_message";
     private static final String KEY_PENDING_CHATGPT_CREATED = "pending_chatgpt_created";
     private static final String KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS = "pending_chatgpt_focus_attempts";
@@ -204,12 +206,38 @@ public class BridgeAccessibilityService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        migrateAutomationState();
         worker.scheduleWithFixedDelay(this::pollOnce, 250, 1200, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptPendingChatGptMessage, 700, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptTargetedChatMessage, 760, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptSessionDiscovery, 900, TimeUnit.MILLISECONDS);
         worker.schedule(this::attemptLocalVisualScan, 1000, TimeUnit.MILLISECONDS);
         worker.scheduleWithFixedDelay(this::pollLocalVisualScanCompletion, 1800, 1800, TimeUnit.MILLISECONDS);
+    }
+
+    private void migrateAutomationState() {
+        SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
+        int version = prefs.getInt(KEY_AUTOMATION_SCHEMA_VERSION, 0);
+        if (version >= AUTOMATION_SCHEMA_VERSION) return;
+
+        prefs.edit()
+                .putInt(KEY_AUTOMATION_SCHEMA_VERSION, AUTOMATION_SCHEMA_VERSION)
+                .putBoolean(KEY_VISUAL_SCAN_ACTIVE, false)
+                .putString(KEY_VISUAL_SCAN_PHASE, "cancelled")
+                .putString(KEY_VISUAL_SCAN_CANCEL_REASON, "upgrade_cleanup")
+                .putBoolean(KEY_DISCOVERY_ACTIVE, false)
+                .putBoolean(KEY_CURRENT_CHAT_DISCOVERY, false)
+                .remove(KEY_PENDING_CHATGPT_MESSAGE)
+                .remove(KEY_PENDING_CHATGPT_CREATED)
+                .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS)
+                .remove(KEY_PENDING_CHATGPT_FILLED)
+                .remove(KEY_PENDING_CHATGPT_SEND_ATTEMPTS)
+                .remove(KEY_TARGET_CHAT_TITLE)
+                .remove(KEY_TARGET_CHAT_MESSAGE)
+                .remove(KEY_TARGET_CHAT_CREATED)
+                .remove(KEY_TARGET_CHAT_SEARCH_MODE)
+                .remove(KEY_TARGET_CHAT_SEARCH_ATTEMPTS)
+                .apply();
     }
 
     private void pollOnce() {
@@ -750,6 +778,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
                                 .putString(KEY_PENDING_CHATGPT_MESSAGE, message)
                                 .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
                                 .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0)
+                                .putBoolean(KEY_PENDING_CHATGPT_FILLED, false)
+                                .putInt(KEY_PENDING_CHATGPT_SEND_ATTEMPTS, 0)
                                 .apply();
                         worker.schedule(this::attemptPendingChatGptMessage, 850, TimeUnit.MILLISECONDS);
                         return;
@@ -838,6 +868,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .putString(KEY_PENDING_CHATGPT_MESSAGE, message)
                 .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
                 .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0)
+                .putBoolean(KEY_PENDING_CHATGPT_FILLED, false)
+                .putInt(KEY_PENDING_CHATGPT_SEND_ATTEMPTS, 0)
                 .apply();
 
         worker.schedule(this::attemptPendingChatGptMessage, 650, TimeUnit.MILLISECONDS);
