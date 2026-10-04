@@ -652,6 +652,20 @@ public class BridgeAccessibilityService extends AccessibilityService {
         if (!"com.openai.chatgpt".contentEquals(event.getPackageName())) return;
 
         int type = event.getEventType();
+
+        if ((type == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+                type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED) &&
+                System.currentTimeMillis() > localVisualInternalGestureUntil) {
+            SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
+            String phase = prefs.getString(KEY_VISUAL_SCAN_PHASE, "");
+            if (prefs.getBoolean(KEY_VISUAL_SCAN_ACTIVE, false) &&
+                    ("opening".equals(phase) || "resetting".equals(phase) ||
+                            "capturing".equals(phase))) {
+                cancelLocalVisualScan(prefs, "user_interaction");
+                return;
+            }
+        }
+
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 type == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
@@ -661,6 +675,24 @@ public class BridgeAccessibilityService extends AccessibilityService {
             worker.schedule(this::attemptSessionDiscovery, 420, TimeUnit.MILLISECONDS);
             worker.schedule(this::attemptLocalVisualScan, 460, TimeUnit.MILLISECONDS);
         }
+    }
+
+    private void markLocalVisualGesture() {
+        localVisualInternalGestureUntil = System.currentTimeMillis() + 1400L;
+    }
+
+    private void cancelLocalVisualScan(SharedPreferences prefs, String reason) {
+        prefs.edit()
+                .putBoolean(KEY_VISUAL_SCAN_ACTIVE, false)
+                .putString(KEY_VISUAL_SCAN_PHASE, "cancelled")
+                .putString(KEY_VISUAL_SCAN_CANCEL_REASON, reason == null ? "cancelled" : reason)
+                .remove(KEY_PENDING_CHATGPT_MESSAGE)
+                .remove(KEY_PENDING_CHATGPT_CREATED)
+                .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS)
+                .remove(KEY_PENDING_CHATGPT_FILLED)
+                .remove(KEY_PENDING_CHATGPT_SEND_ATTEMPTS)
+                .apply();
+        localVisualCaptureBusy = false;
     }
 
     private void attemptTargetedChatMessage() {
