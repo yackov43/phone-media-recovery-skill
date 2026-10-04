@@ -47,6 +47,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String KEY_DISCOVERY_ACTIVE = "discovery_active";
     private static final String KEY_DISCOVERY_PASS = "discovery_pass";
     private static final String KEY_DISCOVERY_TITLES = "discovery_titles";
+    private static final String KEY_DISCOVERY_SIDEBAR_OPENED = "discovery_sidebar_opened";
     private static final String KEY_TARGET_CHAT_TITLE = "target_chat_title";
     private static final String KEY_TARGET_CHAT_MESSAGE = "target_chat_message";
     private static final String KEY_TARGET_CHAT_CREATED = "target_chat_created";
@@ -80,6 +81,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .putBoolean(KEY_DISCOVERY_ACTIVE, true)
                 .putInt(KEY_DISCOVERY_PASS, 0)
                 .putString(KEY_DISCOVERY_TITLES, "[]")
+                .putBoolean(KEY_DISCOVERY_SIDEBAR_OPENED, false)
                 .apply();
     }
 
@@ -882,16 +884,52 @@ public class BridgeAccessibilityService extends AccessibilityService {
         localAutomationBusy = true;
         try {
             int pass = prefs.getInt(KEY_DISCOVERY_PASS, 0);
-            if (!looksLikeChatSidebar(root)) {
+            boolean sidebarOpened = prefs.getBoolean(KEY_DISCOVERY_SIDEBAR_OPENED, false);
+            boolean sidebarDetected = looksLikeChatSidebar(root);
+
+            // Never collect titles from the conversation body. Discovery must first
+            // open ChatGPT's sidebar; otherwise ordinary message/action text can be
+            // mistaken for a chat title.
+            if (!sidebarOpened && !sidebarDetected) {
+                boolean opened = false;
                 AccessibilityNodeInfo opener = findSidebarOpener(root);
                 if (opener != null) {
                     AccessibilityNodeInfo clickable = opener;
                     while (clickable != null && !clickable.isClickable()) clickable = clickable.getParent();
-                    if (clickable != null) clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    prefs.edit().putInt(KEY_DISCOVERY_PASS, pass + 1).apply();
-                    worker.schedule(this::attemptSessionDiscovery, 650, TimeUnit.MILLISECONDS);
-                    return;
+                    opened = clickable != null &&
+                            clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                 }
+                if (!opened) {
+                    Rect screen = new Rect();
+                    root.getBoundsInScreen(screen);
+                    if (!screen.isEmpty()) {
+                        opened = tap(
+                                screen.left + screen.width() * 0.895f,
+                                screen.top + screen.height() * 0.072f);
+                    }
+                }
+                if (opened) {
+                    prefs.edit()
+                            .putBoolean(KEY_DISCOVERY_SIDEBAR_OPENED, true)
+                            .putInt(KEY_DISCOVERY_PASS, pass + 1)
+                            .apply();
+                    worker.schedule(this::attemptSessionDiscovery, 750, TimeUnit.MILLISECONDS);
+                } else {
+                    prefs.edit()
+                            .putInt(KEY_DISCOVERY_PASS, pass + 1)
+                            .apply();
+                    if (pass < 4) {
+                        worker.schedule(this::attemptSessionDiscovery, 650, TimeUnit.MILLISECONDS);
+                    } else {
+                        finishSessionDiscovery(readSavedDiscoveryTitles(prefs));
+                    }
+                }
+                return;
+            }
+
+            // If ChatGPT exposes normal sidebar markers, keep the flag truthful too.
+            if (sidebarDetected && !sidebarOpened) {
+                prefs.edit().putBoolean(KEY_DISCOVERY_SIDEBAR_OPENED, true).apply();
             }
 
             AccessibilityNodeInfo selectedNow = findSelectedChatTitleNode(root);
@@ -963,6 +1001,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                     .edit()
                     .putBoolean(KEY_DISCOVERY_ACTIVE, false)
                     .putInt(KEY_DISCOVERY_PASS, 0)
+                    .putBoolean(KEY_DISCOVERY_SIDEBAR_OPENED, false)
                     .putString(KEY_DISCOVERY_TITLES, chats.toString())
                     .apply();
 
