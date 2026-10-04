@@ -104,6 +104,38 @@ public final class BridgeApi {
                         .put("roles", roles == null ? new JSONArray() : roles));
     }
 
+    public JSONObject getAutonomy(DeviceIdentity id, String sessionId) throws Exception {
+        String query = "?android_bridge=autonomy_get&device_id=" +
+                java.net.URLEncoder.encode(id.deviceId, "UTF-8") +
+                "&session_id=" + java.net.URLEncoder.encode(sessionId, "UTF-8");
+        return request(query, "GET", id, null);
+    }
+
+    public JSONObject setAutonomy(
+            DeviceIdentity id, String sessionId, boolean enabled, JSONObject policy) throws Exception {
+        JSONObject body = new JSONObject()
+                .put("deviceId", id.deviceId)
+                .put("sessionId", sessionId)
+                .put("enabled", enabled);
+        if (policy != null) body.put("policy", policy);
+        return request("?android_bridge=autonomy_set", "POST", id, body);
+    }
+
+    public JSONObject resolveAutonomyDecision(
+            DeviceIdentity id,
+            String sessionId,
+            String decisionId,
+            String resolution,
+            String comment) throws Exception {
+        return request("?android_bridge=autonomy_decision", "POST", id,
+                new JSONObject()
+                        .put("deviceId", id.deviceId)
+                        .put("sessionId", sessionId)
+                        .put("decisionId", decisionId == null ? "" : decisionId)
+                        .put("resolution", resolution)
+                        .put("comment", comment == null ? "" : comment));
+    }
+
     public JSONObject getAgentRegistry(DeviceIdentity id) throws Exception {
         return request(
                 "?android_bridge=agent_registry&device_id=" +
