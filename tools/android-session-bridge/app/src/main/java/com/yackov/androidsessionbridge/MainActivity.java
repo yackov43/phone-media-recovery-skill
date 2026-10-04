@@ -33,9 +33,14 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -50,6 +55,12 @@ public class MainActivity extends Activity {
     private static final int GREEN = Color.rgb(34, 197, 94);
     private static final int AMBER = Color.rgb(245, 158, 11);
     private static final int RED = Color.rgb(239, 68, 68);
+
+    private static final String SCAN_PREFS = "android_session_bridge_scan";
+    private static final String KEY_SCAN_PENDING = "scan_pending";
+    private static final String KEY_SCAN_NONCE = "scan_nonce";
+    private static final String KEY_SCAN_STARTED = "scan_started";
+    private static final long SCAN_TIMEOUT_MS = 180_000L;
 
     private static final String[] AGENT_IDS = {
             "flow_qa", "ui_ux", "security", "performance",
@@ -104,6 +115,9 @@ public class MainActivity extends Activity {
     private Button deviceDisconnectButton;
     private Button accessibilityButton;
     private Button closeButton;
+    private LinearLayout scanReceiverContainer;
+    private EditText scanImportInput;
+    private Button scanImportButton;
 
     private String currentSessionId = null;
     private String currentSessionTitle = null;
@@ -378,6 +392,50 @@ public class MainActivity extends Activity {
         scan.setOnClickListener(v -> scanChatGptSessions());
         card.addView(scan, matchWrap());
 
+        scanReceiverContainer = new LinearLayout(this);
+        scanReceiverContainer.setOrientation(LinearLayout.VERTICAL);
+        scanReceiverContainer.setPadding(dp(12), dp(12), dp(12), dp(12));
+        GradientDrawable scanReceiverBg = new GradientDrawable();
+        scanReceiverBg.setColor(CARD_ALT);
+        scanReceiverBg.setCornerRadius(dp(14));
+        scanReceiverContainer.setBackground(scanReceiverBg);
+        scanReceiverContainer.setVisibility(View.GONE);
+
+        TextView scanReceiverTitle = label("GPT Visual Scan Receiver", 14, TEAL, true);
+        scanReceiverContainer.addView(scanReceiverTitle, matchWrap());
+
+        TextView scanReceiverInfo = label(
+                "האזור הזה מוזן אוטומטית על ידי GPT לאחר סריקה חזותית של רשימת השיחות. אין צורך להקליד כאן ידנית.",
+                11, MUTED, false);
+        LinearLayout.LayoutParams scanInfoLp = matchWrap();
+        scanInfoLp.setMargins(0, dp(4), 0, dp(8));
+        scanReceiverContainer.addView(scanReceiverInfo, scanInfoLp);
+
+        scanImportInput = new EditText(this);
+        scanImportInput.setHint("Scan Import JSON");
+        scanImportInput.setTextColor(TEXT);
+        scanImportInput.setHintTextColor(MUTED);
+        scanImportInput.setTextSize(12f);
+        scanImportInput.setMinLines(3);
+        scanImportInput.setMaxLines(10);
+        scanImportInput.setGravity(Gravity.TOP | Gravity.START);
+        scanImportInput.setPadding(dp(10), dp(10), dp(10), dp(10));
+        GradientDrawable scanInputBg = new GradientDrawable();
+        scanInputBg.setColor(BG);
+        scanInputBg.setCornerRadius(dp(10));
+        scanImportInput.setBackground(scanInputBg);
+        scanReceiverContainer.addView(scanImportInput, matchWrap());
+
+        scanImportButton = compactButton("אשר סריקה", true, false);
+        scanImportButton.setOnClickListener(v -> importVisualScan());
+        LinearLayout.LayoutParams scanImportLp = matchWrap();
+        scanImportLp.setMargins(0, dp(8), 0, 0);
+        scanReceiverContainer.addView(scanImportButton, scanImportLp);
+
+        LinearLayout.LayoutParams receiverLp = matchWrap();
+        receiverLp.setMargins(0, dp(10), 0, 0);
+        card.addView(scanReceiverContainer, receiverLp);
+
         sessionsRowsContainer = new LinearLayout(this);
         sessionsRowsContainer.setOrientation(LinearLayout.VERTICAL);
         discoveredRowsContainer = sessionsRowsContainer;
@@ -446,19 +504,182 @@ public class MainActivity extends Activity {
             showAccessibilityOnboarding(false);
             return;
         }
+        if (currentSessionId == null || currentSessionId.isEmpty()) {
+            sessionsStatus.setText("חבר קודם את Current GPT Session. הסריקה החזותית מתבצעת דרך הסשן המחובר.");
+            sessionsStatus.setTextColor(AMBER);
+            return;
+        }
 
-        sessionsStatus.setText("סורק את רשימת השיחות של ChatGPT…");
+        String nonce = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        getSharedPreferences(SCAN_PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_SCAN_PENDING, true)
+                .putString(KEY_SCAN_NONCE, nonce)
+                .putLong(KEY_SCAN_STARTED, System.currentTimeMillis())
+                .apply();
+
+        armVisualScanReceiver();
+        sessionsStatus.setText("GPT סורק עכשיו את רשימת השיחות באופן חזותי…");
         sessionsStatus.setTextColor(BLUE);
-        BridgeAccessibilityService.queueSessionDiscovery(this);
+
+        String instruction =
+                "@Android Session Bridge בצע עכשיו סריקת Sessions אוטומטית מלאה. " +
+                "אל תבקש מהמשתמש שום פעולה ואל תשתמש בטקסט של Accessibility כדי לזהות שמות שיחות. " +
+                "השתמש אך ורק ב-sessionId " + currentSessionId + ". " +
+                "1) קבל lease עם android_session_manager action=acquire. " +
+                "2) פתח את com.openai.chatgpt עם android_control. " +
+                "3) השתמש ב-screenshot וביכולת הראייה שלך כדי לפתוח את Sidebar של ChatGPT ולקרוא חזותית רק כותרות של שיחות. " +
+                "אל תכלול פריטי ניווט כגון Chat, Codex, Explore, Scheduled, Search, New chat, Projects, GPTs, Sources או See all. " +
+                "4) גלול ברשימת השיחות וחזור על screenshot עד שאין כותרות חדשות. בצע dedupe ושמור את הנוסח המדויק של כל כותרת. " +
+                "5) שחרר את ה-lease. " +
+                "6) פתח את com.yackov.androidsessionbridge עם android_control action=open_app. " +
+                "7) כשה-Bridge בחזית, קרא ל-android_control action=input_text עם הטקסט הבא בלבד: השורה הראשונה חייבת להיות ASB_SCAN_V1:" + nonce +
+                " ואחריה שורה נפרדת לכל כותרת שיחה, בלי bullets ובלי הסברים. " +
+                "8) קרא ל-android_control action=tap_text עם text='אשר סריקה'. " +
+                "בסיום אל תבקש מהמשתמש דבר; האפליקציה תציג את הרשימה בעצמה.";
+
+        BridgeAccessibilityService.queueChatGptMessage(this, instruction);
 
         Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
         if (intent == null) {
+            clearVisualScanState();
             sessionsStatus.setText("ChatGPT לא נמצא במכשיר.");
             sessionsStatus.setTextColor(RED);
             return;
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
+    }
+
+    private void armVisualScanReceiver() {
+        if (scanReceiverContainer == null || scanImportInput == null) return;
+        boolean pending = getSharedPreferences(SCAN_PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_SCAN_PENDING, false);
+        long started = getSharedPreferences(SCAN_PREFS, MODE_PRIVATE)
+                .getLong(KEY_SCAN_STARTED, 0L);
+        if (pending && started > 0L && System.currentTimeMillis() - started > SCAN_TIMEOUT_MS) {
+            clearVisualScanState();
+            pending = false;
+            if (sessionsStatus != null) {
+                sessionsStatus.setText("סריקת GPT פגה לפני שהוחזרה תוצאה. אפשר לנסות שוב.");
+                sessionsStatus.setTextColor(AMBER);
+            }
+        }
+        scanReceiverContainer.setVisibility(pending ? View.VISIBLE : View.GONE);
+        if (pending) {
+            scanImportInput.postDelayed(() -> {
+                scanImportInput.requestFocus();
+                scanImportInput.setSelection(scanImportInput.length());
+            }, 250L);
+        }
+    }
+
+    private void clearVisualScanState() {
+        getSharedPreferences(SCAN_PREFS, MODE_PRIVATE)
+                .edit()
+                .remove(KEY_SCAN_PENDING)
+                .remove(KEY_SCAN_NONCE)
+                .remove(KEY_SCAN_STARTED)
+                .apply();
+        if (scanImportInput != null) scanImportInput.setText("");
+        if (scanReceiverContainer != null) scanReceiverContainer.setVisibility(View.GONE);
+    }
+
+    private void importVisualScan() {
+        if (scanImportInput == null) return;
+        String raw = scanImportInput.getText() == null ? "" : scanImportInput.getText().toString();
+        String nonce = getSharedPreferences(SCAN_PREFS, MODE_PRIVATE)
+                .getString(KEY_SCAN_NONCE, "");
+        String expectedHeader = "ASB_SCAN_V1:" + nonce;
+        String[] lines = raw.replace("\r", "").split("\n");
+
+        if (nonce.isEmpty() || lines.length < 2 || !expectedHeader.equals(lines[0].trim())) {
+            sessionsStatus.setText("תוצאת הסריקה נדחתה: nonce או פורמט לא תקינים.");
+            sessionsStatus.setTextColor(RED);
+            return;
+        }
+
+        LinkedHashSet<String> titles = new LinkedHashSet<>();
+        for (int i = 1; i < lines.length; i++) {
+            String title = lines[i] == null ? "" : lines[i].trim();
+            if (isValidImportedChatTitle(title)) titles.add(title);
+        }
+        if (titles.isEmpty()) {
+            sessionsStatus.setText("תוצאת הסריקה לא הכילה כותרות שיחה תקינות.");
+            sessionsStatus.setTextColor(RED);
+            return;
+        }
+
+        JSONArray chats = new JSONArray();
+        int ordinal = 0;
+        for (String title : titles) {
+            ordinal++;
+            try {
+                chats.put(new JSONObject()
+                        .put("chatKey", visualScanStableKey(title))
+                        .put("title", title)
+                        .put("ordinal", ordinal)
+                        .put("visibleAtSync", true));
+            } catch (Exception ignored) {
+            }
+        }
+
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        scanImportButton.setEnabled(false);
+        sessionsStatus.setText("שומר את תוצאות הסריקה…");
+        sessionsStatus.setTextColor(BLUE);
+
+        io.execute(() -> {
+            try {
+                JSONObject result = api.syncDiscoveredChats(id, chats);
+                if (!result.optBoolean("ok", false)) {
+                    throw new IllegalStateException(result.optString("error", "discovery_sync_failed"));
+                }
+                runOnUiThread(() -> {
+                    clearVisualScanState();
+                    scanImportButton.setEnabled(true);
+                    sessionsStatus.setText("✓ סריקה חזותית הושלמה · " + titles.size() + " Sessions");
+                    sessionsStatus.setTextColor(TEAL);
+                    loadDiscoveredChats();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    scanImportButton.setEnabled(true);
+                    sessionsStatus.setText("שגיאת שמירת סריקה: " + safeMessage(e));
+                    sessionsStatus.setTextColor(RED);
+                });
+            }
+        });
+    }
+
+    private boolean isValidImportedChatTitle(String value) {
+        if (value == null) return false;
+        String title = value.trim();
+        if (title.length() < 2 || title.length() > 180) return false;
+        String lower = title.toLowerCase(Locale.ROOT);
+        String[] excluded = {
+                "chat", "chatgpt", "codex", "explore", "scheduled", "search",
+                "new chat", "projects", "gpts", "sources", "see all", "see all…",
+                "settings", "images", "plugins", "library",
+                "חיפוש", "שיחה חדשה", "פרויקטים", "הגדרות", "תמונות", "תוספים", "ספרייה"
+        };
+        for (String item : excluded) {
+            if (lower.equals(item) || lower.startsWith(item + " ")) return false;
+        }
+        return true;
+    }
+
+    private String visualScanStableKey(String title) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(title.trim().getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) out.append(String.format(Locale.ROOT, "%02x", b & 0xff));
+            return out.toString();
+        } catch (Exception ignored) {
+            return Integer.toHexString(title.hashCode()) +
+                    Integer.toHexString(("chat:" + title).hashCode());
+        }
     }
 
     private void loadDiscoveredChats() {
@@ -1922,6 +2143,7 @@ public class MainActivity extends Activity {
         loadAgentRegistry();
         loadSessions();
         continueCurrentSessionConnectionIfReady();
+        armVisualScanReceiver();
         handler.removeCallbacks(refresher);
         handler.post(refresher);
     }
