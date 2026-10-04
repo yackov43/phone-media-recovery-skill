@@ -490,7 +490,11 @@ public class MainActivity extends Activity {
             JSONObject chat = chats.optJSONObject(i);
             if (chat == null) continue;
             String chatKey = chat.optString("chat_key", "");
+            String chatTitle = chat.optString("title", "");
             JSONObject session = findSessionByChatKey(chatKey);
+            if (session == null && !chatTitle.isEmpty()) {
+                session = findUniqueSessionByTitle(chatTitle);
+            }
 
             if (session != null && currentSessionId != null &&
                     currentSessionId.equals(session.optString("session_id", ""))) {
@@ -554,6 +558,23 @@ public class MainActivity extends Activity {
             }
         }
         return null;
+    }
+
+    private JSONObject findUniqueSessionByTitle(String title) {
+        if (title == null || title.trim().isEmpty()) return null;
+        String wanted = title.trim();
+        JSONObject found = null;
+        for (int i = 0; i < sessionsCache.length(); i++) {
+            JSONObject session = sessionsCache.optJSONObject(i);
+            if (session == null) continue;
+            String candidate = session.optString(
+                    "chat_title",
+                    session.optString("label", "")).trim();
+            if (!wanted.equals(candidate)) continue;
+            if (found != null) return null;
+            found = session;
+        }
+        return found;
     }
 
     private JSONObject findSessionById(String sessionId) {
