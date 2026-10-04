@@ -1718,6 +1718,192 @@ public class MainActivity extends Activity {
         });
     }
 
+    private JSONObject defaultAutonomyPolicy() {
+        try {
+            return new JSONObject()
+                    .put("approvalMode", "important_actions")
+                    .put("maxConsecutiveCycles", 3)
+                    .put("autoAnalyze", true)
+                    .put("autoTest", true)
+                    .put("autoEditReversible", true)
+                    .put("autoDeploy", false)
+                    .put("autoDelete", false)
+                    .put("autoPermissions", false);
+        } catch (Exception e) {
+            return new JSONObject();
+        }
+    }
+
+    private void toggleCurrentSessionAutonomy() {
+        JSONObject session = findSessionById(currentSessionId);
+        if (!isSessionConnected(session)) return;
+        boolean enable = !session.optBoolean("autonomy_enabled", false);
+        String sessionId = session.optString("session_id", "");
+        String title = session.optString("chat_title", session.optString("label", "GPT Session"));
+
+        currentAutonomyButton.setEnabled(false);
+        currentAutonomyStatus.setVisibility(View.VISIBLE);
+        currentAutonomyStatus.setText(enable
+                ? "מפעיל מצב פיתוח עצמאי ומסנכרן את מצב הפרויקט…"
+                : "עוצר מצב פיתוח עצמאי…");
+        currentAutonomyStatus.setTextColor(BLUE);
+
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        io.execute(() -> {
+            try {
+                JSONObject response = api.setAutonomy(
+                        id, sessionId, enable, defaultAutonomyPolicy());
+                if (!response.optBoolean("ok", false)) {
+                    throw new IllegalStateException(
+                            response.optString("error", "autonomy_update_failed"));
+                }
+                runOnUiThread(() -> {
+                    currentAutonomyButton.setEnabled(true);
+                    loadSessions();
+                    if (enable) {
+                        currentAutonomyStatus.setText(
+                                "✓ מצב עצמאי פעיל. ה־GPT מסנכרן הבנת פרויקט ומתחיל מחזור עבודה בטוח.");
+                        currentAutonomyStatus.setTextColor(GREEN);
+                        startAutonomyProjectCycle(sessionId, title);
+                    } else {
+                        currentAutonomyStatus.setText("מצב הפיתוח העצמאי נעצר.");
+                        currentAutonomyStatus.setTextColor(MUTED);
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    currentAutonomyButton.setEnabled(true);
+                    currentAutonomyStatus.setText("שגיאת Autonomy: " + safeMessage(e));
+                    currentAutonomyStatus.setTextColor(RED);
+                });
+            }
+        });
+    }
+
+    private void startAutonomyProjectCycle(String sessionId, String title) {
+        String message =
+                "ANDROID_PROJECT_AUTONOMY_START\n" +
+                "אתה מחובר ל-Android Session Bridge עבור sessionId " + sessionId + ". " +
+                "השתמש בהקשר המלא שכבר קיים בשיחה הזאת כדי להבין את הפרויקט, בלי לגרד transcript דרך Accessibility. " +
+                "קרא מיד ל-android_project_brain action=status ואז action=sync עם מצב פרויקט מובנה: " +
+                "summary, goals, completed, nextActions, blockers, risks, artifacts, decisions, phase. " +
+                "עבוד עצמאית עד 3 מחזורי עבודה בטוחים באותו turn: ניתוח, מחקר מקומי, בדיקות, QA ותיקוני קוד הפיכים מותרים. " +
+                "אחרי כל שינוי אמת את התוצאה ועדכן את המשתמש בקצרה. " +
+                "לפני deployment לפרודקשן, מחיקה, שינוי הרשאות/סודות, פעולה חיצונית בלתי הפיכה, הוצאה כספית, " +
+                "או החלטת ארכיטקטורה/מוצר משמעותית — קרא ל-android_project_brain action=request_approval והפסק עד להחלטת המשתמש. " +
+                "בסיום מחזור עבודה קרא action=sync עם phase=cycle_complete. " +
+                "אל תבצע פעולות משמעותיות בניגוד למדיניות האישור ואל תמציא מצב שלא אומת.";
+
+        BridgeAccessibilityService.queueChatGptMessage(this, message);
+        Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        }
+    }
+
+    private void resolveCurrentProjectDecision(boolean approved) {
+        JSONObject session = findSessionById(currentSessionId);
+        if (session == null) return;
+        JSONObject pending = session.optJSONObject("pending_decision");
+        if (pending == null) return;
+
+        String decisionId = pending.optString("id", "");
+        String sessionId = session.optString("session_id", "");
+        String resolution = approved ? "approved" : "denied";
+        currentDecisionApproveButton.setEnabled(false);
+        currentDecisionDenyButton.setEnabled(false);
+
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        io.execute(() -> {
+            try {
+                JSONObject response = api.resolveAutonomyDecision(
+                        id, sessionId, decisionId, resolution, "");
+                if (!response.optBoolean("ok", false)) {
+                    throw new IllegalStateException(
+                            response.optString("error", "decision_update_failed"));
+                }
+                runOnUiThread(() -> {
+                    currentDecisionApproveButton.setEnabled(true);
+                    currentDecisionDenyButton.setEnabled(true);
+                    currentAutonomyStatus.setText(
+                            approved
+                                    ? "✓ ההחלטה אושרה. מחזיר את ההחלטה ל־GPT להמשך."
+                                    : "ההחלטה נדחתה. ה־GPT יתכנן חלופה.");
+                    currentAutonomyStatus.setTextColor(approved ? GREEN : AMBER);
+                    loadSessions();
+
+                    String resume =
+                            "ANDROID_PROJECT_DECISION_RESOLVED decisionId=" + decisionId +
+                            " resolution=" + resolution + ". " +
+                            "קרא עכשיו ל-android_project_brain action=consume_decision. " +
+                            "לאחר מכן המשך רק בהתאם להחלטת המשתמש ולמדיניות האישור, " +
+                            "וסנכרן שוב את project state.";
+                    BridgeAccessibilityService.queueChatGptMessage(this, resume);
+                    Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    currentDecisionApproveButton.setEnabled(true);
+                    currentDecisionDenyButton.setEnabled(true);
+                    currentAutonomyStatus.setText("שגיאת החלטה: " + safeMessage(e));
+                    currentAutonomyStatus.setTextColor(RED);
+                });
+            }
+        });
+    }
+
+    private void renderCurrentAutonomy(JSONObject current) {
+        if (currentAutonomyButton == null || currentAutonomyStatus == null) return;
+        if (!isSessionConnected(current)) {
+            currentAutonomyButton.setVisibility(View.GONE);
+            currentAutonomyStatus.setVisibility(View.GONE);
+            currentDecisionActions.setVisibility(View.GONE);
+            return;
+        }
+
+        boolean enabled = current.optBoolean("autonomy_enabled", false);
+        currentAutonomyButton.setVisibility(View.VISIBLE);
+        currentAutonomyButton.setText(enabled
+                ? "מצב פיתוח עצמאי: פעיל"
+                : "מצב פיתוח עצמאי: כבוי");
+        currentAutonomyButton.setTextColor(enabled ? GREEN : TEXT);
+
+        JSONObject pending = current.optJSONObject("pending_decision");
+        JSONObject state = current.optJSONObject("project_state");
+        int cycle = current.optInt("autonomy_cycle", 0);
+
+        if (pending != null && "pending".equals(pending.optString("status", "pending"))) {
+            String question = pending.optString("question", "נדרשת החלטת משתמש");
+            String recommended = pending.optString("recommended", "");
+            currentAutonomyStatus.setVisibility(View.VISIBLE);
+            currentAutonomyStatus.setText(
+                    "החלטה נדרשת:\n" + question +
+                    (recommended.isEmpty() ? "" : "\nהמלצה: " + recommended));
+            currentAutonomyStatus.setTextColor(AMBER);
+            currentDecisionActions.setVisibility(View.VISIBLE);
+            return;
+        }
+
+        currentDecisionActions.setVisibility(View.GONE);
+        if (enabled) {
+            String summary = state == null ? "" : state.optString("summary", "");
+            String phase = state == null ? "" : state.optString("phase", "");
+            currentAutonomyStatus.setVisibility(View.VISIBLE);
+            currentAutonomyStatus.setText(
+                    "Autonomy פעיל · מחזור " + cycle +
+                    (phase.isEmpty() ? "" : " · " + phase) +
+                    (summary.isEmpty() ? "" : "\n" + summary));
+            currentAutonomyStatus.setTextColor(TEAL);
+        } else {
+            currentAutonomyStatus.setVisibility(View.GONE);
+        }
+    }
+
     private void refreshConnectionUi() {
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         boolean accessibility = isAccessibilityEnabled();
@@ -1807,6 +1993,7 @@ public class MainActivity extends Activity {
             currentRunButton.setEnabled(selectedCount > 0);
             currentRunButton.setAlpha(currentRunButton.isEnabled() ? 1f : 0.40f);
             currentSessionActions.setVisibility(View.VISIBLE);
+            renderCurrentAutonomy(current);
         } else {
             connectionTitle.setText("הסשן הנוכחי לא מחובר");
             connectionTitle.setTextColor(live ? TEAL : AMBER);
@@ -1816,6 +2003,7 @@ public class MainActivity extends Activity {
             currentSessionButton.setTextColor(Color.rgb(6, 25, 35));
             currentSessionButton.setBackground(rounded(TEAL, 14, TEAL));
             currentSessionActions.setVisibility(View.GONE);
+            renderCurrentAutonomy(null);
         }
         addPressAnimation(currentSessionButton);
 
