@@ -516,24 +516,21 @@ public class MainActivity extends Activity {
 
         clearVisualScanState();
         String nonce = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        sessionsStatus.setText("מכין סריקה חזותית מקומית…");
+        sessionsStatus.setText("ה־APK סורק עכשיו מקומית ומעלה frames ל־GPT…");
         sessionsStatus.setTextColor(BLUE);
 
         String instruction =
-                "@Android Session Bridge הסריקה המקומית מוכנה. " +
-                "אל תבקש מהמשתמש שום פעולה. אל תקרא ל-tap, swipe, open_app או android_session_manager. " +
-                "השתמש אך ורק ב-android_control action=screenshot עם sessionId " + currentSessionId + ". " +
-                "האפליקציה עצמה פותחת את Sidebar, מחזירה אותו לראש וגוללת לעמוד הבא אחרי כל screenshot. " +
-                "בכל תשובת screenshot בדוק result.visualScan. אם ready=false, קרא screenshot שוב. " +
-                "כאשר ready=true, קרא חזותית מהתמונה רק כותרות שיחה; אל תשתמש בטקסט Accessibility. " +
+                "@Android Session Bridge בצע עכשיו עיבוד של סריקת Sessions שכבר מתבצעת מקומית באפליקציה. " +
+                "אל תבקש מהמשתמש שום פעולה. אל תקרא ל-android_control לצורך tap, swipe, open_app או screenshot. " +
+                "השתמש אך ורק בכלי android_visual_scan עם sessionId " + currentSessionId +
+                " ו-nonce " + nonce + ". " +
+                "1) קרא action=status עד ready=true. " +
+                "2) עבור frameIndex מ-0 עד frameCount-1 וקרא action=frame. " +
+                "3) קרא חזותית מכל frame רק כותרות של שיחות. אל תשתמש בטקסט Accessibility. " +
                 "אל תכלול Chat, Codex, Explore, Scheduled, Search, New chat, Projects, GPTs, Sources, See all, Library, Images או Settings. " +
-                "בצע dedupe לפי הכותרת המדויקת והמשך לקרוא screenshot עד result.visualScan.final=true. " +
-                "לאחר final=true שמור את הרשימה דרך android_control action=status באותו sessionId. " +
-                "אם כל הטקסט קצר מ-3500 תווים, שלח text שמתחיל בדיוק visual_scan_submit:" + nonce +
-                " ואז newline ואז כותרת אחת בכל שורה. " +
-                "אם הוא ארוך יותר, חלק לעד 2800 תווים בכל חלק ושלח כל חלק עם text שמתחיל visual_scan_chunk:" + nonce +
-                ":INDEX:TOTAL ואז newline ותוכן החלק, כאשר INDEX מתחיל ב-0; בסוף שלח status נוסף עם text=visual_scan_finalize:" + nonce + ". " +
-                "אל תנווט במכשיר בעצמך ואל תבקש מהמשתמש דבר. לאחר השמירה האפליקציה תחזור לעצמה אוטומטית.";
+                "4) בצע dedupe לפי הכותרת המדויקת. " +
+                "5) שלח את כל הכותרות פעם אחת עם android_visual_scan action=submit. " +
+                "אל תנווט במכשיר בעצמך ואל תבקש מהמשתמש דבר. לאחר submit האפליקציה תחזור לעצמה אוטומטית.";
 
         BridgeAccessibilityService.queueLocalVisualScan(
                 this, nonce, currentSessionId, instruction);
