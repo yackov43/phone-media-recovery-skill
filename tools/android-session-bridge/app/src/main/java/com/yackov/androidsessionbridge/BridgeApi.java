@@ -18,7 +18,7 @@ import java.util.Iterator;
 public final class BridgeApi {
     private static final String ENDPOINT =
             "https://dwwsjglbhzmxspjogjvq.supabase.co/functions/v1/android-session-bridge";
-    public static final String APP_VERSION = "1.0.6";
+    public static final String APP_VERSION = "1.0.7";
 
     private JSONObject request(String query, String method, DeviceIdentity id, JSONObject body)
             throws Exception {
