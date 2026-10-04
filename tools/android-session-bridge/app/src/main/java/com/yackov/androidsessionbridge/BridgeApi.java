@@ -263,6 +263,43 @@ public final class BridgeApi {
         return request("?android_bridge=result", "POST", id, body);
     }
 
+
+    public JSONObject uploadVisualScanFrame(
+            DeviceIdentity id,
+            String sessionId,
+            String nonce,
+            int index,
+            String hash,
+            int width,
+            int height,
+            String imageMime,
+            String imageBase64) throws Exception {
+        JSONObject body = new JSONObject()
+                .put("deviceId", id.deviceId)
+                .put("sessionId", sessionId == null ? "" : sessionId)
+                .put("nonce", nonce == null ? "" : nonce)
+                .put("index", index)
+                .put("hash", hash == null ? "" : hash)
+                .put("width", width)
+                .put("height", height)
+                .put("imageMime", imageMime == null || imageMime.isEmpty() ? "image/jpeg" : imageMime)
+                .put("imageBase64", imageBase64 == null ? "" : imageBase64);
+        return request("?android_bridge=visual_scan_frame", "POST", id, body);
+    }
+
+    public JSONObject completeVisualScanFrames(
+            DeviceIdentity id,
+            String sessionId,
+            String nonce,
+            int frameCount) throws Exception {
+        return request("?android_bridge=visual_scan_complete", "POST", id,
+                new JSONObject()
+                        .put("deviceId", id.deviceId)
+                        .put("sessionId", sessionId == null ? "" : sessionId)
+                        .put("nonce", nonce == null ? "" : nonce)
+                        .put("frameCount", frameCount));
+    }
+
     public static JSONObject deviceInfo() {
         JSONObject o = new JSONObject();
         try {
