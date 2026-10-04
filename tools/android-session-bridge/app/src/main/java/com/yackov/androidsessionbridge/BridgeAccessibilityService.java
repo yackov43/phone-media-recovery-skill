@@ -866,6 +866,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
                     .remove(KEY_PENDING_CHATGPT_MESSAGE)
                     .remove(KEY_PENDING_CHATGPT_CREATED)
                     .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS)
+                    .remove(KEY_PENDING_CHATGPT_FILLED)
+                    .remove(KEY_PENDING_CHATGPT_SEND_ATTEMPTS)
                     .apply();
             return;
         }
@@ -901,7 +903,15 @@ public class BridgeAccessibilityService extends AccessibilityService {
             }
 
             prefs.edit().putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0).apply();
-            if (!setNodeText(editor, message)) return;
+
+            boolean alreadyFilled = prefs.getBoolean(KEY_PENDING_CHATGPT_FILLED, false);
+            if (!alreadyFilled) {
+                if (!setNodeText(editor, message)) return;
+                prefs.edit()
+                        .putBoolean(KEY_PENDING_CHATGPT_FILLED, true)
+                        .putInt(KEY_PENDING_CHATGPT_SEND_ATTEMPTS, 0)
+                        .apply();
+            }
 
             try {
                 Thread.sleep(320L);
@@ -921,54 +931,35 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 }
                 sent = clickable != null &&
                         clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                if (!sent) {
-                    Rect r = new Rect();
-                    send.getBoundsInScreen(r);
-                    if (!r.isEmpty()) sent = tap(r.exactCenterX(), r.exactCenterY());
-                }
             }
 
-            // Compose 2026 fallback: after the editor is focused, Gboard is visible
-            // but the Send node can still be omitted from the accessibility tree.
-            // Derive the send-arrow Y from the IME top and use RTL/LTR X.
             if (!sent) {
-                Rect screen = new Rect();
-                latestRoot.getBoundsInScreen(screen);
-                int keyboardTop = -1;
-                try {
-                    List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
-                    if (windows != null) {
-                        for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
-                            if (window != null &&
-                                    window.getType() ==
-                                            android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
-                                Rect kb = new Rect();
-                                window.getBoundsInScreen(kb);
-                                if (!kb.isEmpty()) {
-                                    keyboardTop = kb.top;
-                                    break;
-                                }
-                            }
-                        }
+                int sendAttempts = prefs.getInt(KEY_PENDING_CHATGPT_SEND_ATTEMPTS, 0) + 1;
+                prefs.edit().putInt(KEY_PENDING_CHATGPT_SEND_ATTEMPTS, sendAttempts).apply();
+                if (sendAttempts >= 4) {
+                    prefs.edit()
+                            .remove(KEY_PENDING_CHATGPT_MESSAGE)
+                            .remove(KEY_PENDING_CHATGPT_CREATED)
+                            .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS)
+                            .remove(KEY_PENDING_CHATGPT_FILLED)
+                            .remove(KEY_PENDING_CHATGPT_SEND_ATTEMPTS)
+                            .apply();
+                    if (prefs.getBoolean(KEY_VISUAL_SCAN_ACTIVE, false)) {
+                        cancelLocalVisualScan(prefs, "send_button_unavailable");
                     }
-                } catch (Exception ignored) {}
-
-                boolean rtl = getResources().getConfiguration().getLayoutDirection() ==
-                        android.view.View.LAYOUT_DIRECTION_RTL;
-                float sendX = rtl
-                        ? screen.left + screen.width() * 0.10f
-                        : screen.right - screen.width() * 0.10f;
-                float sendY = keyboardTop > 0
-                        ? keyboardTop - Math.max(90f, screen.height() * 0.044f)
-                        : screen.top + screen.height() * 0.59f;
-                sent = tap(sendX, sendY);
+                    return;
+                }
+                worker.schedule(this::attemptPendingChatGptMessage, 500, TimeUnit.MILLISECONDS);
+                return;
             }
 
             if (sent) {
                 SharedPreferences.Editor done = prefs.edit()
                         .remove(KEY_PENDING_CHATGPT_MESSAGE)
                         .remove(KEY_PENDING_CHATGPT_CREATED)
-                        .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS);
+                        .remove(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS)
+                        .remove(KEY_PENDING_CHATGPT_FILLED)
+                        .remove(KEY_PENDING_CHATGPT_SEND_ATTEMPTS);
                 if (prefs.getBoolean(KEY_VISUAL_SCAN_ACTIVE, false) &&
                         "waiting_message".equals(prefs.getString(KEY_VISUAL_SCAN_PHASE, ""))) {
                     done.putString(KEY_VISUAL_SCAN_PHASE, "opening")
