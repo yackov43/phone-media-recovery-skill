@@ -109,6 +109,7 @@ public class MainActivity extends Activity {
     private String currentSessionTitle = null;
     private String currentSessionChatKey = null;
     private volatile boolean pendingCurrentSessionDiscovery = false;
+    private volatile boolean currentSessionPairingInFlight = false;
 
     private volatile boolean serverCheckInFlight = false;
     private long lastServerCheckMs = 0L;
@@ -248,6 +249,8 @@ public class MainActivity extends Activity {
 
         connectionTitle = label("בודק חיבור…", 24, TEXT, true);
         connectionTitle.setGravity(Gravity.CENTER);
+        connectionTitle.setMaxLines(2);
+        connectionTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
         sessionCard.addView(connectionTitle, matchWrap());
 
         connectionDetails = label("", 15, MUTED, false);
@@ -751,7 +754,23 @@ public class MainActivity extends Activity {
         handler.postDelayed(new Runnable() {
             int attempts = 0;
             @Override public void run() {
-                if (attempts++ >= 120 || isFinishing()) return;
+                if (isFinishing()) return;
+                if (attempts++ >= 120) {
+                    runOnUiThread(() -> {
+                        if (primary) {
+                            currentSessionPairingInFlight = false;
+                            currentSessionButton.setEnabled(true);
+                            currentSessionButton.setAlpha(1f);
+                            connectionTitle.setText("החיבור לא הושלם בזמן");
+                            connectionTitle.setTextColor(AMBER);
+                            connectionDetails.setText("לא התקבל אישור MCP. אפשר לנסות שוב מהאפליקציה.");
+                        } else {
+                            sessionsStatus.setText("החיבור אל „" + title + "” לא הושלם בזמן. נסה שוב.");
+                            sessionsStatus.setTextColor(AMBER);
+                        }
+                    });
+                    return;
+                }
                 DeviceIdentity id = DeviceIdentity.getOrCreate(MainActivity.this);
                 io.execute(() -> {
                     try {
@@ -759,6 +778,9 @@ public class MainActivity extends Activity {
                         if (r.optBoolean("accepted", false)) {
                             runOnUiThread(() -> {
                                 if (primary) {
+                                    currentSessionPairingInFlight = false;
+                                    currentSessionButton.setEnabled(true);
+                                    currentSessionButton.setAlpha(1f);
                                     connectionTitle.setText("✓ " + title);
                                     connectionTitle.setTextColor(GREEN);
                                 } else {
@@ -772,8 +794,12 @@ public class MainActivity extends Activity {
                         if (r.optBoolean("expired", false)) {
                             runOnUiThread(() -> {
                                 String message = "קוד החיבור של „" + title + "” פג תוקף.";
-                                if (primary) connectionDetails.setText(message);
-                                else sessionsStatus.setText(message);
+                                if (primary) {
+                                    currentSessionPairingInFlight = false;
+                                    currentSessionButton.setEnabled(true);
+                                    currentSessionButton.setAlpha(1f);
+                                    connectionDetails.setText(message);
+                                } else sessionsStatus.setText(message);
                                 if (primary) connectionTitle.setTextColor(AMBER);
                                 else sessionsStatus.setTextColor(AMBER);
                             });
@@ -1727,6 +1753,7 @@ public class MainActivity extends Activity {
     }
 
     private void beginCurrentSessionConnection() {
+        if (currentSessionPairingInFlight) return;
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         if (!id.paired) {
             generatePairCode();
@@ -1743,6 +1770,9 @@ public class MainActivity extends Activity {
         // directly into that conversation's composer.
         pendingCurrentSessionDiscovery = false;
         JSONArray roles = allRegistryAgentIds();
+        currentSessionPairingInFlight = true;
+        currentSessionButton.setEnabled(false);
+        currentSessionButton.setAlpha(0.55f);
 
         connectionTitle.setText("מחבר את הסשן הנוכחי…");
         connectionTitle.setTextColor(BLUE);
@@ -1792,6 +1822,9 @@ public class MainActivity extends Activity {
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
+                    currentSessionPairingInFlight = false;
+                    currentSessionButton.setEnabled(true);
+                    currentSessionButton.setAlpha(1f);
                     connectionTitle.setText("החיבור לסשן נכשל");
                     connectionTitle.setTextColor(RED);
                     connectionDetails.setText(safeMessage(e));
