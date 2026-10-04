@@ -7,11 +7,11 @@ Verified using v4 scheme (APK Signature Scheme v4): false
 Verified for SourceStamp: false
 Number of signers: 1
 Signer #1 certificate DN: CN=Android Session Bridge, OU=Private QA, O=Yackov43, C=IL
-Signer #1 certificate SHA-256 digest: 04f10df4ee2b405c983929d11f610688cb47b5c91f3e846614c96e57d1356467
-Signer #1 certificate SHA-1 digest: 7a16f186ec980779758496624c87f0f768bca9fb
-Signer #1 certificate MD5 digest: 271c47de8d6dbd690c5abe40da4f0852
+Signer #1 certificate SHA-256 digest: e8c42e8bb0a220c1f342346ee1f8c11fde2b5813449c6ca4c62f0e0bbfc3050c
+Signer #1 certificate SHA-1 digest: 00a35a6cd425db32d592f23d301d402efc85014c
+Signer #1 certificate MD5 digest: 40ab98790d711de86deed5d0f3041ce9
 Signer #1 key algorithm: RSA
 Signer #1 key size (bits): 3072
-Signer #1 public key SHA-256 digest: 60da93c7f7584ee423094a27dbdf012663503b21d9cf188f6072cd1d66c957d1
-Signer #1 public key SHA-1 digest: 35f23d35b17eec1b52df64cb4bc1ef99013bc0b7
-Signer #1 public key MD5 digest: 701b7c6a88f80dbd8d9cd60734cda449
+Signer #1 public key SHA-256 digest: 81fd5953b1de132e5251ce02e2e0bb1747e1d08d18f3b775f05792d0e151ee6b
+Signer #1 public key SHA-1 digest: b3181a8f9eacb4c7cbb50267f63225eb71510ec8
+Signer #1 public key MD5 digest: e4adea9c003ed2c3e454aca79b9e1025
