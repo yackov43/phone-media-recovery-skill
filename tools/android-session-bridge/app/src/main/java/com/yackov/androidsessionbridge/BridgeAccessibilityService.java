@@ -38,6 +38,7 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class BridgeAccessibilityService extends AccessibilityService {
     private static final String LOCAL_PREFS = "bridge_local_automation";
@@ -528,9 +529,25 @@ public class BridgeAccessibilityService extends AccessibilityService {
     }
 
     private void takeBridgeScreenshot(DeviceIdentity id, String commandId) {
+        final AtomicBoolean finished = new AtomicBoolean(false);
+
+        worker.schedule(() -> {
+            if (!finished.compareAndSet(false, true)) return;
+            report(id, commandId, false, new JSONObject(),
+                    "SCREENSHOT_WATCHDOG_TIMEOUT");
+            busy = false;
+        }, 8, TimeUnit.SECONDS);
+
         takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
             @Override
             public void onSuccess(ScreenshotResult screenshotResult) {
+                if (!finished.compareAndSet(false, true)) {
+                    try {
+                        HardwareBuffer stale = screenshotResult.getHardwareBuffer();
+                        if (stale != null) stale.close();
+                    } catch (Exception ignored) {}
+                    return;
+                }
                 try {
                     HardwareBuffer hb = screenshotResult.getHardwareBuffer();
                     Bitmap hw = Bitmap.wrapHardwareBuffer(hb, screenshotResult.getColorSpace());
@@ -556,6 +573,9 @@ public class BridgeAccessibilityService extends AccessibilityService {
                             .put("tree", snapshotTree());
                     JSONObject visualScan = decorateLocalVisualScan(scaled);
                     if (visualScan != null) result.put("visualScan", visualScan);
+                    if (scaled != soft) scaled.recycle();
+                    soft.recycle();
+
                     worker.execute(() -> {
                         report(id, commandId, true, result, null);
                         busy = false;
@@ -570,6 +590,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
 
             @Override
             public void onFailure(int errorCode) {
+                if (!finished.compareAndSet(false, true)) return;
                 worker.execute(() -> {
                     report(id, commandId, false, new JSONObject(), "SCREENSHOT_FAILURE:" + errorCode);
                     busy = false;
