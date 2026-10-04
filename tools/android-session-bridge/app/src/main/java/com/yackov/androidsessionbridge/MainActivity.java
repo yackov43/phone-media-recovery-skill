@@ -62,6 +62,9 @@ public class MainActivity extends Activity {
     private static final String KEY_SCAN_STARTED = "scan_started";
     private static final long SCAN_TIMEOUT_MS = 1_800_000L;
 
+    private static final String PREF_LAST_CURRENT_CHAT_TITLE = "last_current_chat_title";
+    private static final String PREF_LAST_CURRENT_CHAT_KEY = "last_current_chat_key";
+
     private static final String[] AGENT_IDS = {
             "flow_qa", "ui_ux", "security", "performance",
             "reliability", "artifact_integrity", "regression", "mobile_integration",
@@ -324,18 +327,26 @@ public class MainActivity extends Activity {
         codeArea.addView(newCodeButton, newLp);
 
         generateCodeButton = actionButton("חבר את המכשיר בפעם הראשונה", true);
-        generateCodeButton.setOnClickListener(v -> generatePairCode());
+        generateCodeButton.setVisibility(View.GONE);
+        generateCodeButton.setOnClickListener(v -> beginCurrentSessionConnection());
         LinearLayout.LayoutParams genLp = matchWrap();
         genLp.setMargins(0, dp(12), 0, 0);
         sessionCard.addView(generateCodeButton, genLp);
 
         currentSessionButton = actionButton("התחבר לסשן הנוכחי", true);
-        currentSessionButton.setVisibility(View.GONE);
+        currentSessionButton.setVisibility(View.VISIBLE);
         currentSessionButton.setOnClickListener(v -> {
             if (currentSessionId != null && !currentSessionId.isEmpty()) {
+                if (currentSessionTitle != null && !currentSessionTitle.isEmpty()) {
+                    getPreferences(MODE_PRIVATE).edit()
+                            .putString(PREF_LAST_CURRENT_CHAT_TITLE, currentSessionTitle)
+                            .putString(PREF_LAST_CURRENT_CHAT_KEY,
+                                    currentSessionChatKey == null ? "" : currentSessionChatKey)
+                            .apply();
+                }
                 updateSessionState(currentSessionId, "disconnected");
             } else {
-                beginCurrentSessionConnection();
+                ensureDeviceTrustedThenConnectCurrentSession();
             }
         });
         LinearLayout.LayoutParams currentLp = matchWrap();
@@ -937,15 +948,6 @@ public class MainActivity extends Activity {
         String chatKey = chat.optString("chat_key", "");
         String title = chat.optString("title", "GPT Session");
 
-        int sameTitleCount = 0;
-        for (int i = 0; i < discoveredChatsCache.length(); i++) {
-            JSONObject candidate = discoveredChatsCache.optJSONObject(i);
-            if (candidate != null && title.equals(candidate.optString("title", ""))) {
-                sameTitleCount++;
-            }
-        }
-        // Duplicate titles are resolved by the selected Bridge Chat ID.
-        // Never require the user to navigate ChatGPT manually.
         if (chatKey.isEmpty()) {
             sessionsStatus.setText("לשיחה הזאת עדיין אין Bridge Chat ID. בצע סריקה מחדש.");
             sessionsStatus.setTextColor(AMBER);
@@ -973,25 +975,25 @@ public class MainActivity extends Activity {
                 if (!result.optBoolean("ok", false)) {
                     throw new IllegalStateException(result.optString("error", "session_pair_failed"));
                 }
-                String code = result.optString("code", "");
-                String requestId = result.optString("requestId", "");
-                String instruction =
-                        "@Android Session Bridge בצע עכשיו חיבור אוטומטי לשיחה הזאת. קרא מיד ל־android_pair_session עם הקוד " +
-                        code +
-                        " ואל תבקש מהמשתמש שום פעולה נוספת. לאחר ההצלחה הצג כאן הודעה ברורה: ✅ Android Session Bridge + MCP מחובר, את ה־sessionId ואת רשימת ה־Mini-Agents הפעילים.";
 
-                BridgeAccessibilityService.queueMessageToChat(
-                        this, title, instruction);
-                Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
-                if (intent == null) throw new IllegalStateException("ChatGPT לא נמצא במכשיר");
-                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
+                String sessionId = result.optString("sessionId", "");
+                if (!result.optBoolean("provisioned", false) || sessionId.isEmpty()) {
+                    throw new IllegalStateException("session_not_provisioned");
+                }
+
+                String code = result.optString("code", "");
+                if (!code.isEmpty()) {
+                    String instruction =
+                            "@Android Session Bridge סנכרון חיבור בלבד: השיחה כבר מחוברת מהאפליקציה עם sessionId " +
+                            sessionId + ". קרא ל־android_pair_session עם הקוד " + code +
+                            " כדי לאשר את שיוך ה־MCP לשיחה הזאת. אל תבקש מהמשתמש שום פעולה.";
+                    BridgeAccessibilityService.queueMessageToChat(this, title, instruction);
+                }
 
                 runOnUiThread(() -> {
-                    sessionsStatus.setText(
-                            "פותח אוטומטית את „" + title + "” ומבצע Pairing…");
-                    sessionsStatus.setTextColor(BLUE);
-                    watchSessionPairing(requestId, title, false);
+                    sessionsStatus.setText("✓ „" + title + "” מחובר");
+                    sessionsStatus.setTextColor(GREEN);
+                    loadSessions();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
@@ -1916,51 +1918,26 @@ public class MainActivity extends Activity {
         closeButton.setVisibility(View.VISIBLE);
 
         if (!id.paired) {
-            currentSessionButton.setVisibility(View.GONE);
             currentSessionActions.setVisibility(View.GONE);
             deviceDisconnectButton.setVisibility(View.GONE);
+            generateCodeButton.setVisibility(View.GONE);
+            codeArea.setVisibility(View.GONE);
+            connectButton.setVisibility(View.GONE);
+            newCodeButton.setVisibility(View.GONE);
 
-            if (activePairCode != null && activePairExpiresAt > 0) {
-                long seconds = Math.max(
-                        0, (activePairExpiresAt - System.currentTimeMillis()) / 1000L);
-                if (seconds <= 0) {
-                    activePairCode = null;
-                    activePairRequestId = null;
-                    activePairExpiresAt = 0L;
-                    pairCode.setText("פג תוקף");
-                    pairInstruction.setText("צור קוד חדש.");
-                    connectButton.setVisibility(View.GONE);
-                } else {
-                    pairInstruction.setText(
-                            "קוד חיבור מכשיר · תקף עוד " +
-                                    (seconds / 60) + ":" +
-                                    String.format("%02d", seconds % 60));
-                }
-            }
+            currentSessionButton.setVisibility(View.VISIBLE);
+            currentSessionButton.setText("התחבר לסשן הנוכחי");
+            currentSessionButton.setTextColor(Color.rgb(6, 25, 35));
+            currentSessionButton.setBackground(rounded(TEAL, 14, TEAL));
+            currentSessionButton.setEnabled(!currentSessionPairingInFlight);
 
-            if (activePairCode != null) {
-                connectionTitle.setText("חיבור מכשיר חד־פעמי");
-                connectionTitle.setTextColor(TEAL);
-                connectionDetails.setText("אשר את הקוד כדי לאפשר ל־Bridge לעבוד עם המכשיר.");
-                technicalStatus.setText(accessibility
-                        ? "Accessibility פעיל"
-                        : "יש להפעיל Accessibility לפני החיבור");
-                generateCodeButton.setVisibility(View.GONE);
-                codeArea.setVisibility(View.VISIBLE);
-                connectButton.setVisibility(View.VISIBLE);
-                newCodeButton.setVisibility(View.VISIBLE);
-            } else {
-                connectionTitle.setText("המכשיר עדיין לא מחובר");
-                connectionTitle.setTextColor(MUTED);
-                connectionDetails.setText(
-                        "זהו שלב חד־פעמי. לאחריו הכפתור הראשי יחבר את סשן GPT הנוכחי.");
-                technicalStatus.setText(accessibility
-                        ? "Accessibility פעיל · מוכן לחיבור"
-                        : "שלב ראשון: הרשאת Accessibility חד־פעמית");
-                codeArea.setVisibility(View.GONE);
-                generateCodeButton.setVisibility(View.VISIBLE);
-                generateCodeButton.setEnabled(true);
-            }
+            connectionTitle.setText("הסשן הנוכחי לא מחובר");
+            connectionTitle.setTextColor(accessibility ? TEAL : AMBER);
+            connectionDetails.setText(
+                    "לחיצה אחת מבצעת ברקע גם אימות מכשיר חד־פעמי וגם חיבור של שיחת GPT הנוכחית. אין קוד ואין שלב שני.");
+            technicalStatus.setText(accessibility
+                    ? "Accessibility פעיל · מוכן לחיבור בלחיצה אחת"
+                    : "יש להפעיל Accessibility פעם אחת");
             return;
         }
 
@@ -2192,15 +2169,91 @@ public class MainActivity extends Activity {
         return code.substring(0, 3) + "  " + code.substring(3);
     }
 
+    private void ensureDeviceTrustedThenConnectCurrentSession() {
+        if (currentSessionPairingInFlight) return;
+        if (!isAccessibilityEnabled()) {
+            showAccessibilityOnboarding(false);
+            return;
+        }
+
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        if (id.paired) {
+            beginCurrentSessionConnection();
+            return;
+        }
+
+        currentSessionPairingInFlight = true;
+        currentSessionButton.setEnabled(false);
+        currentSessionButton.setAlpha(0.55f);
+        connectionTitle.setText("מתחבר לסשן הנוכחי…");
+        connectionTitle.setTextColor(BLUE);
+        connectionDetails.setText("מבצע אימות מכשיר חד־פעמי ברקע וממשיך אוטומטית לחיבור השיחה.");
+
+        JSONArray agents = allRegistryAgentIds();
+        io.execute(() -> {
+            try {
+                JSONObject issued = api.beginPairing(id, android.os.Build.MODEL, agents);
+                if (!issued.optBoolean("ok", false)) {
+                    throw new IllegalStateException(issued.optString("error", "device_pair_begin_failed"));
+                }
+                String requestId = issued.optString("requestId", "");
+                if (requestId.isEmpty()) throw new IllegalStateException("device_pair_request_missing");
+
+                JSONObject completed = api.completePairing(id, requestId);
+                if (!completed.optBoolean("ok", false) || !completed.optBoolean("paired", false)) {
+                    throw new IllegalStateException(completed.optString("error", "device_pair_complete_failed"));
+                }
+
+                DeviceIdentity.markPaired(this, true);
+                DeviceIdentity.clearPendingPairing(this);
+                activePairCode = null;
+                activePairRequestId = null;
+                activePairExpiresAt = 0L;
+
+                runOnUiThread(() -> {
+                    currentSessionPairingInFlight = false;
+                    currentSessionButton.setEnabled(true);
+                    currentSessionButton.setAlpha(1f);
+                    refreshConnectionUi();
+                    loadSessions();
+                    beginCurrentSessionConnection();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    currentSessionPairingInFlight = false;
+                    currentSessionButton.setEnabled(true);
+                    currentSessionButton.setAlpha(1f);
+                    connectionTitle.setText("החיבור נכשל");
+                    connectionTitle.setTextColor(RED);
+                    connectionDetails.setText(safeMessage(e));
+                });
+            }
+        });
+    }
+
     private void beginCurrentSessionConnection() {
         if (currentSessionPairingInFlight) return;
         DeviceIdentity id = DeviceIdentity.getOrCreate(this);
         if (!id.paired) {
-            generatePairCode();
+            ensureDeviceTrustedThenConnectCurrentSession();
             return;
         }
         if (!isAccessibilityEnabled()) {
             showAccessibilityOnboarding(false);
+            return;
+        }
+
+        String knownTitle = currentSessionTitle;
+        String knownChatKey = currentSessionChatKey;
+        if (knownTitle == null || knownTitle.isEmpty()) {
+            knownTitle = getPreferences(MODE_PRIVATE).getString(PREF_LAST_CURRENT_CHAT_TITLE, null);
+        }
+        if (knownChatKey == null || knownChatKey.isEmpty()) {
+            knownChatKey = getPreferences(MODE_PRIVATE).getString(PREF_LAST_CURRENT_CHAT_KEY, null);
+        }
+        if (knownTitle != null && !knownTitle.isEmpty() &&
+                knownChatKey != null && !knownChatKey.isEmpty()) {
+            connectKnownCurrentSession(knownTitle, knownChatKey);
             return;
         }
 
@@ -2259,6 +2312,69 @@ public class MainActivity extends Activity {
                     connectionDetails.setText(
                             "השיחה עצמה תאשר את החיבור ותציג את ה־Session ואת רשימת ה־Mini-Agents.");
                     watchSessionPairing(requestId, "Current GPT Session", true);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    currentSessionPairingInFlight = false;
+                    currentSessionButton.setEnabled(true);
+                    currentSessionButton.setAlpha(1f);
+                    connectionTitle.setText("החיבור לסשן נכשל");
+                    connectionTitle.setTextColor(RED);
+                    connectionDetails.setText(safeMessage(e));
+                });
+            }
+        });
+    }
+
+    private void connectKnownCurrentSession(String title, String chatKey) {
+        if (currentSessionPairingInFlight) return;
+        DeviceIdentity id = DeviceIdentity.getOrCreate(this);
+        JSONArray roles = allRegistryAgentIds();
+
+        currentSessionPairingInFlight = true;
+        currentSessionButton.setEnabled(false);
+        currentSessionButton.setAlpha(0.55f);
+        connectionTitle.setText("מחבר את „" + title + "”…");
+        connectionTitle.setTextColor(BLUE);
+        connectionDetails.setText("ה־Session מתחבר מיד דרך Bridge Chat ID; אישור MCP מסתנכרן אחר כך ואינו חוסם את החיבור.");
+
+        io.execute(() -> {
+            try {
+                JSONObject result = api.beginSessionPairing(
+                        id, title, chatKey, title, roles, true);
+                if (!result.optBoolean("ok", false)) {
+                    throw new IllegalStateException(result.optString("error", "session_pair_failed"));
+                }
+                String sessionId = result.optString("sessionId", "");
+                if (!result.optBoolean("provisioned", false) || sessionId.isEmpty()) {
+                    throw new IllegalStateException("session_not_provisioned");
+                }
+
+                getPreferences(MODE_PRIVATE).edit()
+                        .putString(PREF_LAST_CURRENT_CHAT_TITLE, title)
+                        .putString(PREF_LAST_CURRENT_CHAT_KEY, chatKey)
+                        .apply();
+
+                String code = result.optString("code", "");
+                if (!code.isEmpty()) {
+                    String instruction =
+                            "@Android Session Bridge סנכרון חיבור בלבד: השיחה כבר מחוברת מהאפליקציה עם sessionId " +
+                            sessionId + ". קרא ל־android_pair_session עם הקוד " + code +
+                            " כדי לאשר את שיוך ה־MCP לשיחה הזאת. אל תבקש מהמשתמש שום פעולה.";
+                    BridgeAccessibilityService.queueMessageToChat(this, title, instruction);
+                }
+
+                runOnUiThread(() -> {
+                    currentSessionId = sessionId;
+                    currentSessionTitle = title;
+                    currentSessionChatKey = chatKey;
+                    currentSessionPairingInFlight = false;
+                    currentSessionButton.setEnabled(true);
+                    currentSessionButton.setAlpha(1f);
+                    connectionTitle.setText("✓ " + title);
+                    connectionTitle.setTextColor(GREEN);
+                    connectionDetails.setText("הסשן מחובר. סנכרון MCP מתבצע ברקע ואינו חוסם את המשתמש.");
+                    loadSessions();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
