@@ -45,6 +45,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String KEY_PENDING_CHATGPT_MESSAGE = "pending_chatgpt_message";
     private static final String KEY_PENDING_CHATGPT_CREATED = "pending_chatgpt_created";
     private static final String KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS = "pending_chatgpt_focus_attempts";
+    private static final String KEY_PENDING_CHATGPT_FILLED = "pending_chatgpt_filled";
+    private static final String KEY_PENDING_CHATGPT_SEND_ATTEMPTS = "pending_chatgpt_send_attempts";
     private static final String KEY_DISCOVERY_ACTIVE = "discovery_active";
     private static final String KEY_DISCOVERY_PASS = "discovery_pass";
     private static final String KEY_DISCOVERY_TITLES = "discovery_titles";
@@ -71,6 +73,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String KEY_VISUAL_SCAN_LAST_HASH = "visual_scan_last_hash";
     private static final String KEY_VISUAL_SCAN_SAME_COUNT = "visual_scan_same_count";
     private static final String KEY_VISUAL_SCAN_STARTED = "visual_scan_started";
+    private static final String KEY_VISUAL_SCAN_CANCEL_REASON = "visual_scan_cancel_reason";
     private static final int VISUAL_SCAN_MAX_RESET_STEPS = 40;
     private static final int VISUAL_SCAN_MAX_FRAMES = 96;
 
@@ -79,6 +82,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private volatile boolean busy = false;
     private volatile boolean localAutomationBusy = false;
     private volatile boolean localVisualCaptureBusy = false;
+    private volatile long localVisualInternalGestureUntil = 0L;
 
     public static void queueChatGptMessage(Context context, String message) {
         if (context == null || message == null || message.trim().isEmpty()) return;
@@ -87,6 +91,8 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .putString(KEY_PENDING_CHATGPT_MESSAGE, message.trim())
                 .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
                 .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0)
+                .putBoolean(KEY_PENDING_CHATGPT_FILLED, false)
+                .putInt(KEY_PENDING_CHATGPT_SEND_ATTEMPTS, 0)
                 .apply();
     }
 
@@ -111,6 +117,9 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .putString(KEY_PENDING_CHATGPT_MESSAGE, instruction.trim())
                 .putLong(KEY_PENDING_CHATGPT_CREATED, System.currentTimeMillis())
                 .putInt(KEY_PENDING_CHATGPT_FOCUS_ATTEMPTS, 0)
+                .putBoolean(KEY_PENDING_CHATGPT_FILLED, false)
+                .putInt(KEY_PENDING_CHATGPT_SEND_ATTEMPTS, 0)
+                .remove(KEY_VISUAL_SCAN_CANCEL_REASON)
                 .apply();
     }
 
