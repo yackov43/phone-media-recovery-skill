@@ -116,6 +116,11 @@ public class MainActivity extends Activity {
     private Button currentAgentsButton;
     private Button currentRunButton;
     private Button currentRenameButton;
+    private Button currentAutonomyButton;
+    private TextView currentAutonomyStatus;
+    private LinearLayout currentDecisionActions;
+    private Button currentDecisionApproveButton;
+    private Button currentDecisionDenyButton;
     private Button deviceDisconnectButton;
     private Button accessibilityButton;
     private Button closeButton;
@@ -366,6 +371,38 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams currentActionsLp = matchWrap();
         currentActionsLp.setMargins(0, dp(10), 0, 0);
         sessionCard.addView(currentSessionActions, currentActionsLp);
+
+        currentAutonomyButton = actionButton("מצב פיתוח עצמאי: כבוי", false);
+        currentAutonomyButton.setVisibility(View.GONE);
+        currentAutonomyButton.setOnClickListener(v -> toggleCurrentSessionAutonomy());
+        LinearLayout.LayoutParams autonomyLp = matchWrap();
+        autonomyLp.setMargins(0, dp(10), 0, 0);
+        sessionCard.addView(currentAutonomyButton, autonomyLp);
+
+        currentAutonomyStatus = label("", 12, MUTED, false);
+        currentAutonomyStatus.setVisibility(View.GONE);
+        currentAutonomyStatus.setLineSpacing(0f, 1.18f);
+        currentAutonomyStatus.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams autonomyStatusLp = matchWrap();
+        autonomyStatusLp.setMargins(0, dp(7), 0, 0);
+        sessionCard.addView(currentAutonomyStatus, autonomyStatusLp);
+
+        currentDecisionActions = new LinearLayout(this);
+        currentDecisionActions.setOrientation(LinearLayout.HORIZONTAL);
+        currentDecisionActions.setGravity(Gravity.CENTER);
+        currentDecisionActions.setVisibility(View.GONE);
+
+        currentDecisionApproveButton = compactButton("אשר החלטה", true, false);
+        currentDecisionApproveButton.setOnClickListener(v -> resolveCurrentProjectDecision(true));
+        currentDecisionActions.addView(currentDecisionApproveButton, weightedButtonLp());
+
+        currentDecisionDenyButton = compactButton("דחה", false, true);
+        currentDecisionDenyButton.setOnClickListener(v -> resolveCurrentProjectDecision(false));
+        currentDecisionActions.addView(currentDecisionDenyButton, weightedButtonLp());
+
+        LinearLayout.LayoutParams decisionLp = matchWrap();
+        decisionLp.setMargins(0, dp(8), 0, 0);
+        sessionCard.addView(currentDecisionActions, decisionLp);
 
         deviceDisconnectButton = actionButton("נתק מכשיר", false);
         deviceDisconnectButton.setVisibility(View.GONE);
