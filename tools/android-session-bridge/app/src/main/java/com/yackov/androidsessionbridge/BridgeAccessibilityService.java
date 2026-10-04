@@ -1158,6 +1158,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
         String[] excluded = new String[] {
                 "chatgpt","new chat","search","images","plugins","projects","library",
                 "settings","help","upgrade","log out","share","rename","delete","archive",
+                "codex","explore","scheduled","see all","see all…","sources",
                 "שיחה חדשה","חיפוש","תמונות","תוספים","פרויקטים","ספרייה","הגדרות",
                 "עזרה","שיתוף","שנה שם","מחק","ארכיון","gpt-5","gpt-4","temporary chat"
         };
@@ -1233,13 +1234,16 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private String stableChatKey(String title, int ordinal) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest((title + "#" + ordinal).getBytes(StandardCharsets.UTF_8));
+            // Discovery stores titles in a LinkedHashSet, so duplicate titles are
+            // already collapsed. Including the global list position made the same
+            // conversation receive a different key whenever recency reordered it.
+            byte[] bytes = digest.digest(title.getBytes(StandardCharsets.UTF_8));
             StringBuilder out = new StringBuilder();
             for (byte b : bytes) out.append(String.format(Locale.ROOT, "%02x", b));
             return out.toString();
         } catch (Exception e) {
-            return Integer.toHexString((title + "#" + ordinal).hashCode()) +
-                    Integer.toHexString(title.hashCode());
+            return Integer.toHexString(title.hashCode()) +
+                    Integer.toHexString(("chat:" + title).hashCode());
         }
     }
 
