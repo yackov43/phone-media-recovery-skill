@@ -63,15 +63,21 @@ public class BridgeAccessibilityService extends AccessibilityService {
     private static final String KEY_VISUAL_SCAN_SESSION_ID = "visual_scan_session_id";
     private static final String KEY_VISUAL_SCAN_PHASE = "visual_scan_phase";
     private static final String KEY_VISUAL_SCAN_RESET_COUNT = "visual_scan_reset_count";
+    private static final String KEY_VISUAL_SCAN_RESET_HASH = "visual_scan_reset_hash";
+    private static final String KEY_VISUAL_SCAN_RESET_SAME = "visual_scan_reset_same";
     private static final String KEY_VISUAL_SCAN_PAGE = "visual_scan_page";
+    private static final String KEY_VISUAL_SCAN_FRAME_COUNT = "visual_scan_frame_count";
     private static final String KEY_VISUAL_SCAN_LAST_HASH = "visual_scan_last_hash";
     private static final String KEY_VISUAL_SCAN_SAME_COUNT = "visual_scan_same_count";
     private static final String KEY_VISUAL_SCAN_STARTED = "visual_scan_started";
+    private static final int VISUAL_SCAN_MAX_RESET_STEPS = 40;
+    private static final int VISUAL_SCAN_MAX_FRAMES = 96;
 
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     private final BridgeApi api = new BridgeApi();
     private volatile boolean busy = false;
     private volatile boolean localAutomationBusy = false;
+    private volatile boolean localVisualCaptureBusy = false;
 
     public static void queueChatGptMessage(Context context, String message) {
         if (context == null || message == null || message.trim().isEmpty()) return;
@@ -94,7 +100,10 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 .putString(KEY_VISUAL_SCAN_SESSION_ID, sessionId)
                 .putString(KEY_VISUAL_SCAN_PHASE, "waiting_message")
                 .putInt(KEY_VISUAL_SCAN_RESET_COUNT, 0)
+                .putString(KEY_VISUAL_SCAN_RESET_HASH, "")
+                .putInt(KEY_VISUAL_SCAN_RESET_SAME, 0)
                 .putInt(KEY_VISUAL_SCAN_PAGE, 0)
+                .putInt(KEY_VISUAL_SCAN_FRAME_COUNT, 0)
                 .putString(KEY_VISUAL_SCAN_LAST_HASH, "")
                 .putInt(KEY_VISUAL_SCAN_SAME_COUNT, 0)
                 .putLong(KEY_VISUAL_SCAN_STARTED, System.currentTimeMillis())
@@ -902,7 +911,10 @@ public class BridgeAccessibilityService extends AccessibilityService {
                         "waiting_message".equals(prefs.getString(KEY_VISUAL_SCAN_PHASE, ""))) {
                     done.putString(KEY_VISUAL_SCAN_PHASE, "opening")
                             .putInt(KEY_VISUAL_SCAN_RESET_COUNT, 0)
+                            .putString(KEY_VISUAL_SCAN_RESET_HASH, "")
+                            .putInt(KEY_VISUAL_SCAN_RESET_SAME, 0)
                             .putInt(KEY_VISUAL_SCAN_PAGE, 0)
+                            .putInt(KEY_VISUAL_SCAN_FRAME_COUNT, 0)
                             .putString(KEY_VISUAL_SCAN_LAST_HASH, "")
                             .putInt(KEY_VISUAL_SCAN_SAME_COUNT, 0);
                 }
@@ -925,17 +937,21 @@ public class BridgeAccessibilityService extends AccessibilityService {
                     .putBoolean(KEY_VISUAL_SCAN_ACTIVE, false)
                     .putString(KEY_VISUAL_SCAN_PHASE, "timeout")
                     .apply();
+            launchPackage("com.yackov.androidsessionbridge");
             return;
         }
 
         String phase = prefs.getString(KEY_VISUAL_SCAN_PHASE, "waiting_message");
-        if ("waiting_message".equals(phase) || "ready".equals(phase) ||
-                "await_submit".equals(phase) || "done".equals(phase)) return;
-        if (localAutomationBusy) return;
+        if ("waiting_message".equals(phase) || "await_submit".equals(phase) ||
+                "done".equals(phase) || "timeout".equals(phase) || "error".equals(phase)) return;
+        if (localAutomationBusy || localVisualCaptureBusy) return;
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null ||
-                !"com.openai.chatgpt".contentEquals(root.getPackageName())) return;
+                !"com.openai.chatgpt".contentEquals(root.getPackageName())) {
+            worker.schedule(this::attemptLocalVisualScan, 600, TimeUnit.MILLISECONDS);
+            return;
+        }
 
         localAutomationBusy = true;
         try {
@@ -960,8 +976,10 @@ public class BridgeAccessibilityService extends AccessibilityService {
                     prefs.edit()
                             .putString(KEY_VISUAL_SCAN_PHASE, "resetting")
                             .putInt(KEY_VISUAL_SCAN_RESET_COUNT, 0)
+                            .putString(KEY_VISUAL_SCAN_RESET_HASH, "")
+                            .putInt(KEY_VISUAL_SCAN_RESET_SAME, 0)
                             .apply();
-                    worker.schedule(this::attemptLocalVisualScan, 650, TimeUnit.MILLISECONDS);
+                    worker.schedule(this::resetLocalVisualScanStep, 700, TimeUnit.MILLISECONDS);
                 } else {
                     worker.schedule(this::attemptLocalVisualScan, 700, TimeUnit.MILLISECONDS);
                 }
@@ -969,50 +987,204 @@ public class BridgeAccessibilityService extends AccessibilityService {
             }
 
             if ("resetting".equals(phase)) {
-                int count = prefs.getInt(KEY_VISUAL_SCAN_RESET_COUNT, 0);
-                if (count >= 10) {
-                    prefs.edit()
-                            .putString(KEY_VISUAL_SCAN_PHASE, "ready")
-                            .putInt(KEY_VISUAL_SCAN_PAGE, 0)
-                            .putString(KEY_VISUAL_SCAN_LAST_HASH, "")
-                            .putInt(KEY_VISUAL_SCAN_SAME_COUNT, 0)
-                            .apply();
-                    return;
-                }
-                boolean accepted = swipe(
-                        screen.left + screen.width() * 0.70f,
-                        screen.top + screen.height() * 0.28f,
-                        screen.left + screen.width() * 0.70f,
-                        screen.top + screen.height() * 0.86f,
-                        360L);
-                prefs.edit()
-                        .putInt(KEY_VISUAL_SCAN_RESET_COUNT, accepted ? count + 1 : count)
-                        .apply();
-                worker.schedule(this::attemptLocalVisualScan, accepted ? 430 : 650, TimeUnit.MILLISECONDS);
+                worker.schedule(this::resetLocalVisualScanStep, 50, TimeUnit.MILLISECONDS);
+                return;
+            }
+
+            if ("capturing".equals(phase)) {
+                worker.schedule(this::captureAndUploadLocalVisualFrame, 50, TimeUnit.MILLISECONDS);
             }
         } finally {
             localAutomationBusy = false;
         }
     }
 
-    private void advanceLocalVisualScan() {
+    private void resetLocalVisualScanStep() {
         SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
         if (!prefs.getBoolean(KEY_VISUAL_SCAN_ACTIVE, false) ||
-                !"ready".equals(prefs.getString(KEY_VISUAL_SCAN_PHASE, ""))) return;
+                !"resetting".equals(prefs.getString(KEY_VISUAL_SCAN_PHASE, "")) ||
+                localVisualCaptureBusy) return;
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null ||
-                !"com.openai.chatgpt".contentEquals(root.getPackageName())) return;
+                !"com.openai.chatgpt".contentEquals(root.getPackageName())) {
+            worker.schedule(this::resetLocalVisualScanStep, 600, TimeUnit.MILLISECONDS);
+            return;
+        }
 
-        Rect screen = new Rect();
-        root.getBoundsInScreen(screen);
-        if (screen.isEmpty()) return;
-        swipe(
-                screen.left + screen.width() * 0.70f,
-                screen.top + screen.height() * 0.84f,
-                screen.left + screen.width() * 0.70f,
-                screen.top + screen.height() * 0.28f,
-                520L);
+        localVisualCaptureBusy = true;
+        takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
+            @Override
+            public void onSuccess(ScreenshotResult screenshotResult) {
+                try {
+                    HardwareBuffer hb = screenshotResult.getHardwareBuffer();
+                    Bitmap hw = Bitmap.wrapHardwareBuffer(hb, screenshotResult.getColorSpace());
+                    if (hw == null) throw new IllegalStateException("Bitmap unavailable");
+                    Bitmap soft = hw.copy(Bitmap.Config.ARGB_8888, false);
+                    hb.close();
+
+                    String hash = visualSidebarHash(soft);
+                    soft.recycle();
+
+                    String last = prefs.getString(KEY_VISUAL_SCAN_RESET_HASH, "");
+                    int same = prefs.getInt(KEY_VISUAL_SCAN_RESET_SAME, 0);
+                    int count = prefs.getInt(KEY_VISUAL_SCAN_RESET_COUNT, 0);
+                    same = !hash.isEmpty() && hash.equals(last) ? same + 1 : 0;
+
+                    if (same >= 2 || count >= VISUAL_SCAN_MAX_RESET_STEPS) {
+                        prefs.edit()
+                                .putString(KEY_VISUAL_SCAN_PHASE, "capturing")
+                                .putInt(KEY_VISUAL_SCAN_PAGE, 0)
+                                .putInt(KEY_VISUAL_SCAN_FRAME_COUNT, 0)
+                                .putString(KEY_VISUAL_SCAN_LAST_HASH, "")
+                                .putInt(KEY_VISUAL_SCAN_SAME_COUNT, 0)
+                                .apply();
+                        worker.schedule(BridgeAccessibilityService.this::captureAndUploadLocalVisualFrame,
+                                250, TimeUnit.MILLISECONDS);
+                        return;
+                    }
+
+                    Rect screen = new Rect();
+                    AccessibilityNodeInfo currentRoot = getRootInActiveWindow();
+                    if (currentRoot != null) currentRoot.getBoundsInScreen(screen);
+                    boolean accepted = !screen.isEmpty() && swipe(
+                            screen.left + screen.width() * 0.70f,
+                            screen.top + screen.height() * 0.28f,
+                            screen.left + screen.width() * 0.70f,
+                            screen.top + screen.height() * 0.86f,
+                            360L);
+
+                    prefs.edit()
+                            .putString(KEY_VISUAL_SCAN_RESET_HASH, hash)
+                            .putInt(KEY_VISUAL_SCAN_RESET_SAME, same)
+                            .putInt(KEY_VISUAL_SCAN_RESET_COUNT, accepted ? count + 1 : count)
+                            .apply();
+                    worker.schedule(BridgeAccessibilityService.this::resetLocalVisualScanStep,
+                            accepted ? 470 : 750, TimeUnit.MILLISECONDS);
+                } catch (Exception e) {
+                    worker.schedule(BridgeAccessibilityService.this::resetLocalVisualScanStep,
+                            850, TimeUnit.MILLISECONDS);
+                } finally {
+                    localVisualCaptureBusy = false;
+                }
+            }
+
+            @Override
+            public void onFailure(int errorCode) {
+                localVisualCaptureBusy = false;
+                worker.schedule(BridgeAccessibilityService.this::resetLocalVisualScanStep,
+                        900, TimeUnit.MILLISECONDS);
+            }
+        });
+    }
+
+    private void captureAndUploadLocalVisualFrame() {
+        SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
+        if (!prefs.getBoolean(KEY_VISUAL_SCAN_ACTIVE, false) ||
+                !"capturing".equals(prefs.getString(KEY_VISUAL_SCAN_PHASE, "")) ||
+                localVisualCaptureBusy) return;
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null ||
+                !"com.openai.chatgpt".contentEquals(root.getPackageName())) {
+            worker.schedule(this::captureAndUploadLocalVisualFrame, 600, TimeUnit.MILLISECONDS);
+            return;
+        }
+
+        localVisualCaptureBusy = true;
+        takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
+            @Override
+            public void onSuccess(ScreenshotResult screenshotResult) {
+                worker.execute(() -> {
+                    Bitmap soft = null;
+                    Bitmap scaled = null;
+                    try {
+                        HardwareBuffer hb = screenshotResult.getHardwareBuffer();
+                        Bitmap hw = Bitmap.wrapHardwareBuffer(hb, screenshotResult.getColorSpace());
+                        if (hw == null) throw new IllegalStateException("Bitmap unavailable");
+                        soft = hw.copy(Bitmap.Config.ARGB_8888, false);
+                        hb.close();
+
+                        String hash = visualSidebarHash(soft);
+                        String lastHash = prefs.getString(KEY_VISUAL_SCAN_LAST_HASH, "");
+                        int same = prefs.getInt(KEY_VISUAL_SCAN_SAME_COUNT, 0);
+                        int frameCount = prefs.getInt(KEY_VISUAL_SCAN_FRAME_COUNT, 0);
+                        same = !hash.isEmpty() && hash.equals(lastHash) ? same + 1 : 0;
+
+                        if (same >= 2 || frameCount >= VISUAL_SCAN_MAX_FRAMES) {
+                            String nonce = prefs.getString(KEY_VISUAL_SCAN_NONCE, "");
+                            String sessionId = prefs.getString(KEY_VISUAL_SCAN_SESSION_ID, "");
+                            DeviceIdentity id = DeviceIdentity.getOrCreate(BridgeAccessibilityService.this);
+                            api.completeVisualScanFrames(id, sessionId, nonce, frameCount);
+                            prefs.edit()
+                                    .putString(KEY_VISUAL_SCAN_PHASE, "await_submit")
+                                    .putInt(KEY_VISUAL_SCAN_SAME_COUNT, same)
+                                    .apply();
+                            return;
+                        }
+
+                        if (same == 0) {
+                            int targetW = Math.min(720, soft.getWidth());
+                            int targetH = Math.max(1,
+                                    Math.round(soft.getHeight() * (targetW / (float) soft.getWidth())));
+                            scaled = targetW == soft.getWidth()
+                                    ? soft
+                                    : Bitmap.createScaledBitmap(soft, targetW, targetH, true);
+
+                            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 48, bytes);
+                            String b64 = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP);
+
+                            String nonce = prefs.getString(KEY_VISUAL_SCAN_NONCE, "");
+                            String sessionId = prefs.getString(KEY_VISUAL_SCAN_SESSION_ID, "");
+                            DeviceIdentity id = DeviceIdentity.getOrCreate(BridgeAccessibilityService.this);
+                            api.uploadVisualScanFrame(
+                                    id, sessionId, nonce, frameCount, hash,
+                                    scaled.getWidth(), scaled.getHeight(),
+                                    "image/jpeg", b64);
+
+                            prefs.edit()
+                                    .putString(KEY_VISUAL_SCAN_LAST_HASH, hash)
+                                    .putInt(KEY_VISUAL_SCAN_SAME_COUNT, 0)
+                                    .putInt(KEY_VISUAL_SCAN_PAGE, frameCount)
+                                    .putInt(KEY_VISUAL_SCAN_FRAME_COUNT, frameCount + 1)
+                                    .apply();
+                        } else {
+                            prefs.edit().putInt(KEY_VISUAL_SCAN_SAME_COUNT, same).apply();
+                        }
+
+                        Rect screen = new Rect();
+                        AccessibilityNodeInfo currentRoot = getRootInActiveWindow();
+                        if (currentRoot != null) currentRoot.getBoundsInScreen(screen);
+                        boolean accepted = !screen.isEmpty() && swipe(
+                                screen.left + screen.width() * 0.70f,
+                                screen.top + screen.height() * 0.84f,
+                                screen.left + screen.width() * 0.70f,
+                                screen.top + screen.height() * 0.28f,
+                                520L);
+
+                        worker.schedule(
+                                BridgeAccessibilityService.this::captureAndUploadLocalVisualFrame,
+                                accepted ? 650 : 900, TimeUnit.MILLISECONDS);
+                    } catch (Exception e) {
+                        worker.schedule(
+                                BridgeAccessibilityService.this::captureAndUploadLocalVisualFrame,
+                                1000, TimeUnit.MILLISECONDS);
+                    } finally {
+                        if (scaled != null && scaled != soft) scaled.recycle();
+                        if (soft != null && !soft.isRecycled()) soft.recycle();
+                        localVisualCaptureBusy = false;
+                    }
+                });
+            }
+
+            @Override
+            public void onFailure(int errorCode) {
+                localVisualCaptureBusy = false;
+                worker.schedule(BridgeAccessibilityService.this::captureAndUploadLocalVisualFrame,
+                        1000, TimeUnit.MILLISECONDS);
+            }
+        });
     }
 
     private String visualSidebarHash(Bitmap bitmap) {
@@ -1043,45 +1215,15 @@ public class BridgeAccessibilityService extends AccessibilityService {
         SharedPreferences prefs = getSharedPreferences(LOCAL_PREFS, Context.MODE_PRIVATE);
         if (!prefs.getBoolean(KEY_VISUAL_SCAN_ACTIVE, false)) return null;
 
-        String nonce = prefs.getString(KEY_VISUAL_SCAN_NONCE, "");
-        String phase = prefs.getString(KEY_VISUAL_SCAN_PHASE, "waiting_message");
-        int page = prefs.getInt(KEY_VISUAL_SCAN_PAGE, 0);
         JSONObject meta = new JSONObject();
         try {
-            meta.put("nonce", nonce);
-            meta.put("page", page);
-            meta.put("phase", phase);
-            meta.put("ready", "ready".equals(phase));
-            meta.put("final", false);
+            meta.put("nonce", prefs.getString(KEY_VISUAL_SCAN_NONCE, ""));
+            meta.put("phase", prefs.getString(KEY_VISUAL_SCAN_PHASE, ""));
+            meta.put("frameCount", prefs.getInt(KEY_VISUAL_SCAN_FRAME_COUNT, 0));
+            meta.put("autonomous", true);
+            meta.put("ready", "await_submit".equals(prefs.getString(KEY_VISUAL_SCAN_PHASE, "")));
+            meta.put("final", "await_submit".equals(prefs.getString(KEY_VISUAL_SCAN_PHASE, "")));
         } catch (Exception ignored) {}
-
-        if (!"ready".equals(phase)) return meta;
-
-        String hash = visualSidebarHash(bitmap);
-        String lastHash = prefs.getString(KEY_VISUAL_SCAN_LAST_HASH, "");
-        int same = prefs.getInt(KEY_VISUAL_SCAN_SAME_COUNT, 0);
-        if (!hash.isEmpty() && hash.equals(lastHash)) same++;
-        else same = 0;
-        boolean finalFrame = !hash.isEmpty() && same >= 2;
-
-        try {
-            meta.put("hash", hash);
-            meta.put("sameCount", same);
-            meta.put("final", finalFrame);
-        } catch (Exception ignored) {}
-
-        SharedPreferences.Editor edit = prefs.edit()
-                .putString(KEY_VISUAL_SCAN_LAST_HASH, hash)
-                .putInt(KEY_VISUAL_SCAN_SAME_COUNT, same);
-
-        if (finalFrame) {
-            edit.putString(KEY_VISUAL_SCAN_PHASE, "await_submit");
-        } else {
-            edit.putInt(KEY_VISUAL_SCAN_PAGE, page + 1);
-        }
-        edit.apply();
-
-        if (!finalFrame) worker.schedule(this::advanceLocalVisualScan, 160, TimeUnit.MILLISECONDS);
         return meta;
     }
 
