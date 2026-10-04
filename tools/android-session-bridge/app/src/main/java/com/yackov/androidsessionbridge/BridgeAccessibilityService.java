@@ -771,6 +771,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                 boolean opened = false;
                 if (opener != null) {
                     AccessibilityNodeInfo clickable = clickableAncestor(opener);
+                    if (clickable != null) markLocalVisualGesture();
                     opened = clickable != null &&
                             clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                 }
@@ -1021,6 +1022,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                             clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                 }
                 if (!opened) {
+                    markLocalVisualGesture();
                     opened = tap(
                             screen.left + screen.width() * 0.895f,
                             screen.top + screen.height() * 0.072f);
@@ -1100,6 +1102,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                     Rect screen = new Rect();
                     AccessibilityNodeInfo currentRoot = getRootInActiveWindow();
                     if (currentRoot != null) currentRoot.getBoundsInScreen(screen);
+                    if (!screen.isEmpty()) markLocalVisualGesture();
                     boolean accepted = !screen.isEmpty() && swipe(
                             screen.left + screen.width() * 0.70f,
                             screen.top + screen.height() * 0.28f,
@@ -1209,6 +1212,7 @@ public class BridgeAccessibilityService extends AccessibilityService {
                         Rect screen = new Rect();
                         AccessibilityNodeInfo currentRoot = getRootInActiveWindow();
                         if (currentRoot != null) currentRoot.getBoundsInScreen(screen);
+                        if (!screen.isEmpty()) markLocalVisualGesture();
                         boolean accepted = !screen.isEmpty() && swipe(
                                 screen.left + screen.width() * 0.70f,
                                 screen.top + screen.height() * 0.84f,
