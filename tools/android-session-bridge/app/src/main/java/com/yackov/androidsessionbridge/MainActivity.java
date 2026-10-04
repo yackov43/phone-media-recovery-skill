@@ -60,16 +60,18 @@ public class MainActivity extends Activity {
     private static final String KEY_SCAN_PENDING = "scan_pending";
     private static final String KEY_SCAN_NONCE = "scan_nonce";
     private static final String KEY_SCAN_STARTED = "scan_started";
-    private static final long SCAN_TIMEOUT_MS = 180_000L;
+    private static final long SCAN_TIMEOUT_MS = 1_800_000L;
 
     private static final String[] AGENT_IDS = {
             "flow_qa", "ui_ux", "security", "performance",
-            "reliability", "artifact_integrity", "regression", "mobile_integration"
+            "reliability", "artifact_integrity", "regression", "mobile_integration",
+            "observability", "release_guard"
     };
 
     private static final String[] AGENT_TITLES = {
             "Flow QA", "UI / UX", "Security", "Performance",
-            "Reliability", "Artifact Integrity", "Regression", "Mobile Integration"
+            "Reliability", "Artifact Integrity", "Regression", "Mobile Integration",
+            "Observability", "Release Guard"
     };
 
     private static final String[] AGENT_DESCRIPTIONS = {
@@ -80,7 +82,9 @@ public class MainActivity extends Activity {
             "בודק retry, timeout, reconnect והתאוששות מתקלות.",
             "בודק שלמות קבצים, תמונות, attachments, metadata ותוצר סופי.",
             "מריץ מחדש תקלות שכבר תוקנו כדי למנוע חזרה לאחור.",
-            "בודק Android ו־ChatGPT יחד על המכשיר הפיזי."
+            "בודק Android ו־ChatGPT יחד על המכשיר הפיזי.",
+            "בודק logs, correlation IDs, heartbeats, state drift וסימני תקלה.",
+            "חוסם Release אם build, signing, E2E או regression gate עדיין לא עברו."
     };
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
