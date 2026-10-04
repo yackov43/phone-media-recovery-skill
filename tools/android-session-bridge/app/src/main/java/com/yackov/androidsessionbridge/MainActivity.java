@@ -509,44 +509,37 @@ public class MainActivity extends Activity {
             return;
         }
         if (currentSessionId == null || currentSessionId.isEmpty()) {
-            sessionsStatus.setText("חבר קודם את Current GPT Session. הסריקה החזותית מתבצעת דרך הסשן המחובר.");
+            sessionsStatus.setText("חבר קודם את Current GPT Session.");
             sessionsStatus.setTextColor(AMBER);
             return;
         }
 
+        clearVisualScanState();
         String nonce = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        getSharedPreferences(SCAN_PREFS, MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_SCAN_PENDING, true)
-                .putString(KEY_SCAN_NONCE, nonce)
-                .putLong(KEY_SCAN_STARTED, System.currentTimeMillis())
-                .apply();
-
-        armVisualScanReceiver();
-        sessionsStatus.setText("GPT סורק עכשיו את רשימת השיחות באופן חזותי…");
+        sessionsStatus.setText("מכין סריקה חזותית מקומית…");
         sessionsStatus.setTextColor(BLUE);
 
         String instruction =
-                "@Android Session Bridge בצע עכשיו סריקת Sessions אוטומטית מלאה. " +
-                "אל תבקש מהמשתמש שום פעולה ואל תשתמש בטקסט של Accessibility כדי לזהות שמות שיחות. " +
-                "השתמש אך ורק ב-sessionId " + currentSessionId + ". " +
-                "1) קבל lease עם android_session_manager action=acquire. " +
-                "2) פתח את com.openai.chatgpt עם android_control. " +
-                "3) השתמש ב-screenshot וביכולת הראייה שלך כדי לפתוח את Sidebar של ChatGPT ולקרוא חזותית רק כותרות של שיחות. " +
-                "אל תכלול פריטי ניווט כגון Chat, Codex, Explore, Scheduled, Search, New chat, Projects, GPTs, Sources או See all. " +
-                "4) גלול ברשימת השיחות וחזור על screenshot עד שאין כותרות חדשות. בצע dedupe ושמור את הנוסח המדויק של כל כותרת. " +
-                "5) שחרר את ה-lease. " +
-                "6) פתח את com.yackov.androidsessionbridge עם android_control action=open_app. " +
-                "7) כשה-Bridge בחזית, קרא ל-android_control action=input_text עם הטקסט הבא בלבד: השורה הראשונה חייבת להיות ASB_SCAN_V1:" + nonce +
-                " ואחריה שורה נפרדת לכל כותרת שיחה, בלי bullets ובלי הסברים. " +
-                "8) קרא ל-android_control action=tap_text עם text='אשר סריקה'. " +
-                "בסיום אל תבקש מהמשתמש דבר; האפליקציה תציג את הרשימה בעצמה.";
+                "@Android Session Bridge הסריקה המקומית מוכנה. " +
+                "אל תבקש מהמשתמש שום פעולה. אל תקרא ל-tap, swipe, open_app או android_session_manager. " +
+                "השתמש אך ורק ב-android_control action=screenshot עם sessionId " + currentSessionId + ". " +
+                "האפליקציה עצמה פותחת את Sidebar, מחזירה אותו לראש וגוללת לעמוד הבא אחרי כל screenshot. " +
+                "בכל תשובת screenshot בדוק result.visualScan. אם ready=false, קרא screenshot שוב. " +
+                "כאשר ready=true, קרא חזותית מהתמונה רק כותרות שיחה; אל תשתמש בטקסט Accessibility. " +
+                "אל תכלול Chat, Codex, Explore, Scheduled, Search, New chat, Projects, GPTs, Sources, See all, Library, Images או Settings. " +
+                "בצע dedupe לפי הכותרת המדויקת והמשך לקרוא screenshot עד result.visualScan.final=true. " +
+                "לאחר final=true שמור את הרשימה דרך android_control action=status באותו sessionId. " +
+                "אם כל הטקסט קצר מ-3500 תווים, שלח text שמתחיל בדיוק visual_scan_submit:" + nonce +
+                " ואז newline ואז כותרת אחת בכל שורה. " +
+                "אם הוא ארוך יותר, חלק לעד 2800 תווים בכל חלק ושלח כל חלק עם text שמתחיל visual_scan_chunk:" + nonce +
+                ":INDEX:TOTAL ואז newline ותוכן החלק, כאשר INDEX מתחיל ב-0; בסוף שלח status נוסף עם text=visual_scan_finalize:" + nonce + ". " +
+                "אל תנווט במכשיר בעצמך ואל תבקש מהמשתמש דבר. לאחר השמירה האפליקציה תחזור לעצמה אוטומטית.";
 
-        BridgeAccessibilityService.queueChatGptMessage(this, instruction);
+        BridgeAccessibilityService.queueLocalVisualScan(
+                this, nonce, currentSessionId, instruction);
 
         Intent intent = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
         if (intent == null) {
-            clearVisualScanState();
             sessionsStatus.setText("ChatGPT לא נמצא במכשיר.");
             sessionsStatus.setTextColor(RED);
             return;
